@@ -164,10 +164,13 @@ test "requiring 'CoffeeScript' doesn't change `Error.prepareStackTrace`", ->
     # This uses `spawn` rather than the preferred `fork` because `fork` requires
     # loading code in a separate file. The `--eval` here shows exactly what is
     # executing without indirection.
+    # Note: Node 18+ sets Error.prepareStackTrace natively as 'ErrorPrepareStackTrace',
+    # so we check it is UNCHANGED after requiring CoffeeScript, not that it is undefined.
     proc = spawn 'node', [
       '--eval', """
+        const before = Error.prepareStackTrace;
         require('./lib/coffeescript/coffeescript.js');
-        process.stdout.write(Error.prepareStackTrace === undefined ? 'unused' : 'defined');
+        process.stdout.write(Error.prepareStackTrace === before ? 'unchanged' : 'changed');
       """
     ]
 
@@ -178,7 +181,7 @@ test "requiring 'CoffeeScript' doesn't change `Error.prepareStackTrace`", ->
     proc.on 'close', (status) ->
       try
         equal status, 0
-        equal out, 'unused'
+        equal out, 'unchanged'
 
         resolve()
       catch exception

@@ -11,7 +11,13 @@ nodeSourceMapsSupportEnabled = process? and (
   process.env.NODE_OPTIONS?.includes('--enable-source-maps')
 )
 
-unless Error.prepareStackTrace or nodeSourceMapsSupportEnabled
+# Node 18+ sets Error.prepareStackTrace natively as 'ErrorPrepareStackTrace'.
+# We must distinguish that from a user/library custom patch (which we must preserve).
+# Only call patchStackTrace() if no user custom function is set and
+# --enable-source-maps is not active.
+isNodeNativePrepareStackTrace = Error.prepareStackTrace?.name is 'ErrorPrepareStackTrace'
+
+unless (Error.prepareStackTrace and not isNodeNativePrepareStackTrace) or nodeSourceMapsSupportEnabled
   cacheSourceMaps = true
   patchStackTrace()
 

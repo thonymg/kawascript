@@ -173,6 +173,9 @@ getCommandId = (repl, commandName) ->
 
 module.exports =
   start: (opts = {}) ->
+    if process?.versions?.bun
+      throw new Error 'The CoffeeScript REPL is not supported under Bun'
+
     [major, minor, build] = process.versions.node.split('.').map (n) -> parseInt(n, 10)
 
     if major < 6

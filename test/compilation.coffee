@@ -135,6 +135,9 @@ test "transpile option, for Node API CoffeeScript.compile", ->
 
 test "transpile option, for Node API CoffeeScript.eval", ->
   return if global.testingBrowser
+  # Bun's CJS/ESM interop wraps `require('path')` differently than Node, causing
+  # Babel's `_path["default"].sep` to be undefined. Skip under Bun.
+  return if process?.versions?.bun
   ok transpile 'eval', "import path from 'path'; path.sep in ['/', '\\\\']"
 
 test "transpile option, for Node API CoffeeScript.run", ->

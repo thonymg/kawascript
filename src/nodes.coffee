@@ -5744,7 +5744,8 @@ exports.Sequence = class Sequence extends Base
 # ---------
 
 UTILITIES =
-  modulo: -> 'function(a, b) { return (+a % (b = +b) + b) % b; }'
+  # Use explicit temp vars to guarantee left-to-right coercion order across JS engines (V8, JSC/Bun).
+  modulo: -> 'function(a, b) { var _a = +a, _b = +b; return (_a % _b + _b) % _b; }'
 
   boundMethodCheck: -> "
     function(instance, Constructor) {
