@@ -805,6 +805,7 @@ exports.Lexer = class Lexer
     else if value in UNARY           then tag = 'UNARY'
     else if value in UNARY_MATH      then tag = 'UNARY_MATH'
     else if value in SHIFT           then tag = 'SHIFT'
+    else if value is '|>'           then tag = 'PIPE'
     else if value is '?' and prev?.spaced then tag = 'BIN?'
     else if value is '|' and @tag() in LINE_BREAK then tag = 'MATCH_PIPE'
     else if prev
@@ -1321,6 +1322,7 @@ NUMBER     = ///
 
 OPERATOR   = /// ^ (
   ?: [-=]>             # function
+   | \|>               # pipe operator
    | [-+*/%<>&|^!?=]=  # compound assign / compare
    | >>>=?             # zero-fill right shift
    | ([-+:])\1         # doubles
@@ -1399,7 +1401,7 @@ POSSIBLY_DIVISION   = /// ^ /=?\s ///
 # Other regexes.
 HERECOMMENT_ILLEGAL = /\*\//
 
-LINE_CONTINUER      = /// ^ \s* (?: , | \??\.(?![.\d]) | \??:: ) ///
+LINE_CONTINUER      = /// ^ \s* (?: , | \??\.(?![.\d]) | \??:: | \|> ) ///
 
 STRING_INVALID_ESCAPE = ///
   ( (?:^|[^\\]) (?:\\\\)* )        # Make sure the escape isn’t escaped.

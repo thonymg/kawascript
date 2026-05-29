@@ -846,7 +846,7 @@ SINGLE_CLOSERS   = ['TERMINATOR', 'CATCH', 'FINALLY', 'ELSE', 'OUTDENT', 'LEADIN
 LINEBREAKS       = ['TERMINATOR', 'INDENT', 'OUTDENT']
 
 # Tokens that close open calls when they follow a newline.
-CALL_CLOSERS     = ['.', '?.', '::', '?::']
+CALL_CLOSERS     = ['.', '?.', '::', '?::', 'PIPE']
 
 # Tokens that prevent a subsequent indent from ending implicit calls/objects
 CONTROL_IN_IMPLICIT = ['IF', 'TRY', 'FINALLY', 'CATCH', 'CLASS', 'SWITCH']
@@ -867,4 +867,4 @@ DISCARDED = ['(', ')', '[', ']', '{', '}', ':', '.', '..', '...', ',', '=', '++'
 # Tokens that, when appearing at the end of a line, suppress a following TERMINATOR/INDENT token
 exports.UNFINISHED = UNFINISHED = ['\\', '.', '?.', '?::', 'UNARY', 'DO', 'DO_IIFE', 'MATH', 'UNARY_MATH', '+', '-',
            '**', 'SHIFT', 'RELATION', 'COMPARE', '&', '^', '|', '&&', '||',
-           'BIN?', 'EXTENDS']
+           'BIN?', 'EXTENDS', 'PIPE']

@@ -6091,6 +6091,54 @@ exports.MatchNode = class MatchNode extends Base
 
     [].concat declFrags, armFrags
 
+#### PipeOp
+
+# The pipe operator `|>` — data-first, like Elixir/Gleam.
+# `a |> f b, c` compiles to `f(a, b, c)`.
+exports.PipeOp = class PipeOp extends Base
+  constructor: (@left, @right) -> super()
+
+  children: ['left', 'right']
+
+  isStatement: NO
+
+  compileNode: (o) ->
+    leftFrags = @left.compileToFragments o, LEVEL_PAREN
+    @compileAsCall o, leftFrags
+
+  compileAsCall: (o, leftFrags) ->
+    right = @right.unwrap()
+
+    if right instanceof Call
+      @compilePipeIntoCall o, leftFrags, right
+    else if right instanceof Code
+      fnFrags = @right.compileToFragments o, LEVEL_PAREN
+      [].concat(
+        [@makeCode '('],
+        fnFrags,
+        [@makeCode ')('],
+        leftFrags,
+        [@makeCode ')']
+      )
+    else
+      fnFrags = @right.compileToFragments o, LEVEL_PAREN
+      [].concat fnFrags, [@makeCode '('], leftFrags, [@makeCode ')']
+
+  compilePipeIntoCall: (o, leftFrags, call) ->
+    fnFrags  = call.variable.compileToFragments o, LEVEL_ACCESS
+    argFrags = [].concat leftFrags
+    for arg in call.args
+      argFrags.push @makeCode ', '
+      argFrags = argFrags.concat arg.compileToFragments o, LEVEL_LIST
+    [].concat fnFrags, [@makeCode '('], argFrags, [@makeCode ')']
+
+  astType: -> 'PipeExpression'
+
+  astProperties: (o) ->
+    return
+      left:  @left.ast o, LEVEL_PAREN
+      right: @right.ast o, LEVEL_PAREN
+
 # Constants
 # ---------
 

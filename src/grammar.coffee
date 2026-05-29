@@ -968,6 +968,7 @@ grammar =
     o 'Expression &&       Expression',         -> new Op $2.toString(), $1, $3, undefined, originalOperator: $2.original
     o 'Expression ||       Expression',         -> new Op $2.toString(), $1, $3, undefined, originalOperator: $2.original
     o 'Expression BIN?     Expression',         -> new Op $2, $1, $3
+    o 'Expression PIPE     Expression',         -> new PipeOp $1, $3
     o 'Expression RELATION Expression',         -> new Op $2.toString(), $1, $3, undefined, invertOperator: $2.invert?.original ? $2.invert
 
     o 'SimpleAssignable COMPOUND_ASSIGN
@@ -1014,6 +1015,7 @@ operators = [
   ['left',      '&&']
   ['left',      '||']
   ['left',      'BIN?']
+  ['left',      'PIPE']
   ['nonassoc',  'INDENT', 'OUTDENT']
   ['right',     'YIELD']
   ['right',     '=', ':', 'COMPOUND_ASSIGN', 'RETURN', 'THROW', 'EXTENDS']
