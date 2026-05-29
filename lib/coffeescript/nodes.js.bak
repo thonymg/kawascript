@@ -739,9 +739,6 @@
       initializeScope(o) {
         var j, len1, name, ref1, ref2, results1;
         o.scope = new Scope(null, this.body, null, (ref1 = o.referencedVars) != null ? ref1 : []);
-        if (o.replMode) {
-          o.scope.replMode = true;
-        }
         ref2 = o.locals || [];
         results1 = [];
         for (j = 0, len1 = ref2.length; j < len1; j++) {
@@ -1016,7 +1013,7 @@
             if (i) {
               fragments.push(this.makeCode('\n'));
             }
-            fragments.push(this.makeCode(`${this.tab}${scope.root.replMode ? 'var' : 'let'} `));
+            fragments.push(this.makeCode(`${this.tab}${scope.shared ? 'var' : 'let'} `));
             if (declars) {
               declaredVariables = scope.declaredVariables();
               for (declaredVariablesIndex = k = 0, len2 = declaredVariables.length; k < len2; declaredVariablesIndex = ++k) {
@@ -5412,9 +5409,7 @@
             // to 'var' (level check) so the variable is hoisted, keeping valid JS output.
             // Destructuring patterns use 'var' to allow the same variable name in multiple positions.
             atTopLevel = o.level === LEVEL_TOP && o.scope === o.scope.root;
-            // In REPL/eval mode, all variables use 'var' so they become global and are
-            // accessible across multiple eval calls via vm.runInThisContext.
-            declarationType = this.letDeclaration ? 'let' : (atTopLevel && !isDestructuring && !o.scope.root.replMode) ? 'const' : 'var';
+            declarationType = this.letDeclaration ? 'let' : (atTopLevel && !isDestructuring) ? 'const' : 'var';
             existingType = o.scope.typeOwn(name.value);
             if (existingType && (existingType === 'const' || existingType === 'let' || existingType === 'var')) {
               // Variable already declared in this scope
@@ -5577,7 +5572,7 @@
           if (varBase instanceof IdentifierLiteral && varBase.isDeclaration) {
             if (this.letDeclaration) {
               answer.unshift(this.makeCode('let '));
-            } else if (o.scope === o.scope.root && !o.scope.root.replMode) {
+            } else if (o.scope === o.scope.root) {
               answer.unshift(this.makeCode('const '));
             }
           }
@@ -7475,12 +7470,8 @@
           if (target instanceof Value && target.base instanceof IdentifierLiteral) {
             baseName = target.base.value;
             if ((ref1 = o.scope) != null ? ref1.check(baseName) : void 0) {
-              if (!(target.properties && target.properties.length > 0)) {
-                // Bare `delete a` — deleting a declared variable is always a strict mode error.
-                return this.error("'delete' operand may not be a variable declaration: '" + baseName + "'");
-              } else if (!target.containsSoak() && (o.scope.isConstVar(baseName) || o.scope.isLetVar(baseName))) {
-                // `delete obj.prop` — immutability: disallow on const/let unless it's a soak chain.
-                return this.error("The 'delete' operator is forbidden on a const/let frozen object.");
+              if (o.scope.isConstVar(baseName) || o.scope.isLetVar(baseName)) {
+                return this.error("The 'delete' operator is forbidden in immutable mode. " + "To remove a property, use destructuring: const {prop, ...rest} = obj");
               }
             }
           }

@@ -533,6 +533,7 @@ exports.Root = class Root extends Base
 
   initializeScope: (o) ->
     o.scope = new Scope null, @body, null, o.referencedVars ? []
+    o.scope.replMode = yes if o.replMode
     # Mark given local variables in the root scope as parameters so they don’t
     # end up being declared on the root block.
     o.scope.parameter name for name in o.locals or []
@@ -703,7 +704,7 @@ exports.Block = class Block extends Base
       assigns = scope.hasAssignments
       if declars or assigns
         fragments.push @makeCode '\n' if i
-        fragments.push @makeCode "#{@tab}#{if scope.shared then 'var' else 'let'} "
+        fragments.push @makeCode "#{@tab}#{if scope.root.replMode then 'var' else 'let'} "
         if declars
           declaredVariables = scope.declaredVariables()
           for declaredVariable, declaredVariablesIndex in declaredVariables
@@ -3634,7 +3635,9 @@ exports.Assign = class Assign extends Base
         # Destructuring patterns use 'var' to allow the same variable name in multiple positions.
         atTopLevel = o.level is LEVEL_TOP and o.scope is o.scope.root
         isDestructuring = @variable.isArray?() or @variable.isObject?()
-        declarationType = if @letDeclaration then 'let' else if atTopLevel and not isDestructuring then 'const' else 'var'
+        # In REPL/eval mode, all variables use 'var' so they become global and are
+        # accessible across multiple eval calls via vm.runInThisContext.
+        declarationType = if @letDeclaration then 'let' else if atTopLevel and not isDestructuring and not o.scope.root.replMode then 'const' else 'var'
         existingType    = o.scope.typeOwn name.value
         if existingType and existingType in ['const', 'let', 'var']
           # Variable already declared in this scope
@@ -3779,7 +3782,7 @@ exports.Assign = class Assign extends Base
       if varBase instanceof IdentifierLiteral and varBase.isDeclaration
         if @letDeclaration
           answer.unshift @makeCode 'let '
-        else if o.scope is o.scope.root
+        else if o.scope is o.scope.root and not o.scope.root.replMode
           answer.unshift @makeCode 'const '
     # ─────────────────────────────────────────────────────────────────────────
 
@@ -5053,9 +5056,12 @@ exports.Op = class Op extends Base
       if target instanceof Value and target.base instanceof IdentifierLiteral
         baseName = target.base.value
         if o.scope?.check(baseName)
-          if o.scope.isConstVar(baseName) or o.scope.isLetVar(baseName)
-            @error "The 'delete' operator is forbidden in immutable mode. " +
-                   "To remove a property, use destructuring: const {prop, ...rest} = obj"
+          if not (target.properties?.length > 0)
+            # Bare `delete a` — deleting a declared variable is always a strict mode error.
+            @error "'delete' operand may not be a variable declaration: '#{baseName}'"
+          else if not target.containsSoak() and (o.scope.isConstVar(baseName) or o.scope.isLetVar(baseName))
+            # `delete obj.prop` — immutability: disallow on const/let unless it's a soak chain.
+            @error "The 'delete' operator is forbidden on a const/let frozen object."
 
   astNode: (o) ->
     @checkContinuation o if @isYield()
