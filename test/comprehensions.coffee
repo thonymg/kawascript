@@ -96,7 +96,7 @@ test "all isn't reserved.", ->
 
 test "Ensure that the closure wrapper preserves local variables.", ->
 
-  obj = {}
+  obj = new Object()
 
   for method in ['one', 'two', 'three'] then do (method) ->
     obj[method] = ->
@@ -141,7 +141,7 @@ test "Even when referenced in the filter.", ->
 
 test "Even a convoluted one.", ->
 
-  funcs = []
+  funcs = new Array()
 
   for i in [1..3]
     do (i) ->
@@ -183,7 +183,7 @@ test "Nested shared scopes.", ->
 test "Scoped loop pattern matching.", ->
 
   a = [[0], [1]]
-  funcs = []
+  funcs = new Array()
 
   for [v] in a
     do (v) ->
@@ -291,7 +291,7 @@ test "Comprehensions only wrap their last line in a closure, allowing other line
 
 test "Issue #897: Ensure that plucked function variables aren't leaked.", ->
 
-  facets = {}
+  facets = new Object()
   list = ['one', 'two']
 
   (->
@@ -314,7 +314,7 @@ test "Issue #905. Soaks as the for loop subject.", ->
 
 test "Issue #948. Capturing loop variables.", ->
 
-  funcs = []
+  funcs = new Array()
   list  = ->
     [1, 2, 3]
 
@@ -418,7 +418,7 @@ test "#1326: `by` value is uncached", ->
   g = -> ++gi
   h = -> ++hi
 
-  forCompile = []
+  forCompile = new Array()
   rangeCompileSimple = []
 
   #exercises For.compile
@@ -505,12 +505,11 @@ test "#2007: Return object literal from comprehension", ->
   eq 0, y[1].x
 
 test "#2274: Allow @values as loop variables", ->
-  obj = {
+  obj = Object.assign new Object(),
     item: null
     method: ->
       for @item in [1, 2, 3]
         null
-  }
   eq obj.item, null
   obj.method()
   eq obj.item, 3

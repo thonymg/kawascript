@@ -71,7 +71,7 @@ test "the `merge` helper makes a new object with all properties of the objects g
 
 test "the `extend` helper performs a shallow copy", ->
   ary = [0, 1, 2, 3]
-  obj = {}
+  obj = new Object()
   # should return the object being extended
   eq obj, extend(obj, ary)
   # should copy the other object's properties as well (obviously)
@@ -89,7 +89,7 @@ test "the `flatten` helper flattens an array", ->
 # `del`
 
 test "the `del` helper deletes a property from an object and returns the deleted value", ->
-  obj = [0, 1, 2]
+  obj = [0, 1, 2].slice()
   eq 1, del(obj, 1)
   ok 1 not of obj
 

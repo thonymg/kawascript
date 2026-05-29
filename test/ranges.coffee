@@ -92,7 +92,7 @@ test "large ranges are generated with looping constructs", ->
   eq  99, up[len - 1]
 
 test "for-from loops over ranges", ->
-  array1 = []
+  array1 = new Array()
   for x from [20..30]
     array1.push(x)
     break if x is 25
@@ -205,7 +205,7 @@ test "#4884: Range not declaring var for the 'i'", ->
 
 test "#4889: `for` loop unexpected behavior", ->
   n = 1
-  result = []
+  result = new Array()
   for i in [0..n]
     result.push i
     for j in [(i+1)..n]
@@ -215,7 +215,7 @@ test "#4889: `for` loop unexpected behavior", ->
 
 test "#4889: `for` loop unexpected behavior with `by 1` on second loop", ->
   n = 1
-  result = []
+  result = new Array()
   for i in [0..n]
     result.push i
     for j in [(i+1)..n] by 1

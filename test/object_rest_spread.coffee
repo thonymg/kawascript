@@ -323,7 +323,7 @@ test "#4673: complex destructured object spread variables", ->
   {{a...}...} = b
   eq a.c, 1
 
-  d = {}
+  d = new Object()
   {d.e...} = f: 1
   eq d.e.f, 1
 
@@ -459,6 +459,6 @@ test "#5291: soaks/prototype shorthands in object spread variables", ->
   eq {...soakedCall?().b}.c, 3
 
   assignToPrototype =
-    prototype: {}
+    prototype: new Object()
   {...assignToPrototype::b} = c: 4
   eq assignToPrototype::b.c, 4

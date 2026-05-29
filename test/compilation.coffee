@@ -2,7 +2,7 @@
 # -----------
 
 # Helper to pipe the CoffeeScript compiler’s output through a transpiler.
-transpile = (method, code, options = {}) ->
+transpile = (method, code, options = new Object()) ->
   # `method` should be 'compile' or 'eval' or 'run'
   options.bare = yes
   options.transpile =
@@ -15,7 +15,7 @@ test "ensure that carriage returns don't break compilation on Windows", ->
   doesNotThrowCompileError 'one\r\ntwo', bare: on
 
 test "#3089 - don't mutate passed in options to compile", ->
-  opts = {}
+  opts = new Object()
   CoffeeScript.compile '1 + 1', opts
   ok !opts.scope
 
@@ -32,7 +32,7 @@ test "header is disabled by default", ->
   eq -1, CoffeeScript.compile('x = y').indexOf header
 
 test "multiple generated references", ->
-  a = {b: []}
+  a = {b: new Array()}
   a.b[true] = -> this == a.b
   c = 0
   d = []

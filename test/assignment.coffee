@@ -13,7 +13,7 @@ test "context property assignment (using @)", ->
   addMethod = ->
     @method = -> nonce
     this
-  eq nonce, addMethod.call({}).method()
+  eq nonce, addMethod.call(new Object()).method()
 
 test "unassignable values", ->
   nonce = {}
@@ -56,7 +56,7 @@ test "compound assignment as a sub expression", ->
 # *note: this test could still use refactoring*
 test "compound assignment should be careful about caching variables", ->
   count = 0
-  list = []
+  list = new Array()
 
   list[++count] or= 1
   eq 1, list[1]
@@ -473,7 +473,7 @@ test "#1643: splatted accesses in destructuring assignments should not be declar
       code =
         """
         nonce = {}; nonce2 = {}; nonce3 = {};
-        @o = o = new (class C then a:{}); f = -> o
+        @o = o = new (class C then a: new Object()); f = -> o
         [#{new Array(i).join('x,')}#{access}...] = [#{new Array(i).join('0,')}nonce, nonce2, nonce3]
         unless #{access}[0] is nonce and #{access}[1] is nonce2 and #{access}[2] is nonce3 then throw new Error('[...]')
         """
@@ -522,7 +522,7 @@ test '#2532: compound assignment with terminator', ->
   """
 
 test "#2613: parens on LHS of destructuring", ->
-  a = {}
+  a = new Object()
   [(a).b] = [1, 2, 3]
   eq a.b, 1
 
@@ -549,7 +549,7 @@ test "#1500: Assignment to variables similar to generated variables", ->
   eq x, 4
   eq 'undefined', typeof ref1
 
-  x = {}
+  x = new Object()
   base = -> x
   name = -1
   base()[-name] ?= 2
@@ -558,7 +558,7 @@ test "#1500: Assignment to variables similar to generated variables", ->
   eq name, -1
 
   f = (@a, a) -> [@a, a]
-  arrayEq [1, 2], f.call scope = {}, 1, 2
+  arrayEq [1, 2], f.call scope = new Object(), 1, 2
   eq 1, scope.a
 
   try throw 'foo'
@@ -660,7 +660,7 @@ test "destructuring assignment with an empty array in object", ->
 test "#5004: array destructuring with accessors", ->
   obj =
     arr: ['a', 'b', 'c', 'd']
-    list: {}
+    list: new Object()
     f1: ->
       [@first, @rest...] = @arr
     f2: ->

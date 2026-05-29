@@ -19,7 +19,7 @@ positions for a single line of output JavaScript code.
 
     class LineMap
       constructor: (@line) ->
-        @columns = []
+        @columns = new Array()
 
       add: (column, [sourceLine, sourceColumn], options={}) ->
         return if @columns[column] and options.noReplace
@@ -42,7 +42,7 @@ through the arrays of line and column buffer to produce it.
 
     class SourceMap
       constructor: ->
-        @lines = []
+        @lines = new Array()
 
 Adds a mapping to this SourceMap. `sourceLocation` and `generatedLocation`
 are both `[line, column]` arrays. If `options.noReplace` is true, then if there

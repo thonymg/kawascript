@@ -568,7 +568,7 @@ test "nested match expressions", ->
   eq f(1, 0), "x non-zero"
 
 test "match inside a loop", ->
-  results = []
+  results = new Array()
   for n in [0, 1, 2, -1]
     results.push(match n
       | 0          -> "zero"

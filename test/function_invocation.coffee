@@ -197,7 +197,7 @@ test "Test more function passing:", ->
 test "Chained blocks, with proper indentation levels:", ->
 
   counter =
-    results: []
+    results: new Array()
     tick: (func) ->
       @results.push func()
       this
@@ -245,7 +245,7 @@ test "Test for calls/parens/multiline-chains.", ->
 test "Test implicit calls in functions in parens:", ->
 
   result = ((val) ->
-    [].push val
+    new Array().push val
     val
   )(10)
   ok result is 10

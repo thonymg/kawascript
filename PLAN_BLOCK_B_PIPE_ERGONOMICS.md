@@ -1,4 +1,4 @@
-# Block B — Ergonomie du Pipe : Placeholder `$` et Composition `>>=`
+# Block B — Ergonomie du Pipe : Placeholder `_` et Composition `>>=`
 
 ## Prérequis
 
@@ -9,28 +9,28 @@
 
 | Feature | État |
 |---------|------|
-| `$` comme placeholder de pipe | ❌ `$` identifiant pris → ambiguïté avec usages jQuery/existants |
+| `_` comme placeholder de pipe | ❌ `_` identifiant pris → ambiguïté avec usages lodash/discard existants |
 | `>>=` composition forward | ❌ `>>=` est le compound-assign de shift-droit |
 
 Vérification :
 ```
-5 |> add $ 3   →  add $(3)(5)   # FAUX — $ est un identifiant
+5 |> add _ 3   →  add _(3)(5)   # FAUX — _ est un identifiant
 h = f >>= g    →  h = (f >>= g) # FAUX — >>= = compound assign
 ```
 
 ## Spécification
 
 ```coffee
-# Placeholder : $ = valeur pipée, position explicite
-"hello" |> slice $, 1, 3    # → slice("hello", 1, 3)
-users   |> reduce $, 0, fn  # → reduce(users, 0, fn)
+# Placeholder : _ = valeur pipée, position explicite
+"hello" |> slice _, 1, 3    # → slice("hello", 1, 3)
+users   |> reduce _, 0, fn  # → reduce(users, 0, fn)
 
 # Composition forward : f >>= g = (x) -> g(f(x))
 transform = double >>= inc   # → (x) -> inc(double(x))
 5 |> double >>= inc          # → inc(double(5)) = 11
 ```
 
-> `$` et `>>=` sont interdépendants car ils font partie de la même PR de refactoring
+> `_` et `>>=` sont interdépendants car ils font partie de la même PR de refactoring
 > du lexer (précédences) et des mêmes tests "pipeline ergonomique".
 
 ---
@@ -43,22 +43,22 @@ Ajouter une nouvelle section "PHASE 2 — ERGONOMIE" :
 
 ```coffee
 # ─────────────────────────────────────────────────────────────────────────────
-# 12. PLACEHOLDER $
+# 12. PLACEHOLDER _
 # ─────────────────────────────────────────────────────────────────────────────
 
-test "placeholder $ — valeur pipée en position non-première", ->
+test "placeholder _ — valeur pipée en position non-première", ->
   slice = (str, start, end) -> str.slice start, end
-  eq ("hello" |> slice $, 1, 3), "ell"
+  eq ("hello" |> slice _, 1, 3), "ell"
 
-test "placeholder $ — valeur pipée comme dernier argument", ->
+test "placeholder _ — valeur pipée comme dernier argument", ->
   myReduce = (init, fn, data) -> data.reduce fn, init
-  result = [1, 2, 3] |> myReduce 0, ((a, b) -> a + b), $
+  result = [1, 2, 3] |> myReduce 0, ((a, b) -> a + b), _
   eq result, 6
 
-test "placeholder $ — compiles to positional insert", ->
+test "placeholder _ — compiles to positional insert", ->
   eqJS """
     slice = (str, start, end) -> str.slice start, end
-    result = "hello" |> slice $, 1, 3
+    result = "hello" |> slice _, 1, 3
   """, """
     const slice = function(str, start, end) {
       return str.slice(start, end);
@@ -66,8 +66,8 @@ test "placeholder $ — compiles to positional insert", ->
     const result = slice("hello", 1, 3);
   """
 
-test "placeholder $ — multiple placeholders are invalid (syntax error expected)", ->
-  throws (-> CoffeeScript.compile "a |> f $, $"), /placeholder/
+test "placeholder _ — multiple placeholders are invalid (syntax error expected)", ->
+  throws (-> CoffeeScript.compile "a |> f _, _"), /placeholder/
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 13. COMPOSITION >>= 
@@ -112,24 +112,23 @@ test "chaîne de composition puis pipe", ->
 
 ## Étape 2 — Implémentation
 
-### 2a. Placeholder `$`
+### 2a. Placeholder `_`
 
 **Fichier** : `src/lexer.coffee`
 
-`$` est déjà un **identifiant valide** en CoffeeScript (le regex `IDENTIFIER` inclut `[$\w\x7f-\uffff]+`
-— ligne ~1279 de lexer.coffee). Il est lexé en `IDENTIFIER` avec valeur `'$'`, pas en opérateur.
-Une variable locale `$ = tokens.length - 1` existe dans `matchWithInterpolations`
-(ligne 962) et reste valide car `$` n'est pas promu keyword.
+`_` est déjà un **identifiant valide** en CoffeeScript (le regex `IDENTIFIER` inclut `[$\w\x7f-\uffff]+`
+— ligne ~1279 de lexer.coffee). Il est lexé en `IDENTIFIER` avec valeur `'_'`, pas en opérateur.
+`_` n'apparaît pas comme variable locale dans les méthodes de `src/lexer.coffee` concernées.
 
-La solution est identique à l'ancienne approche `%` : **aucune modification du lexer**.
-La désambiguïsation se fait uniquement au niveau du **nœud PipeOp** : quand un argument
-du call est un `IdentifierLiteral` de valeur `'$'` sans propriétés, c'est le placeholder.
+**Aucune modification du lexer**. La désambiguïsation se fait uniquement au niveau du
+**nœud PipeOp** : quand un argument du call est un `IdentifierLiteral` de valeur `'_'`
+sans propriétés, c'est le placeholder.
 
-Avantage de `$` sur `%` : `$` produit un token `IDENTIFIER` (simple comparaison
-`arg.base?.value is '$'`) alors que `%` produisait un token `MATH` (`Op` sans second
-opérande) — la détection est plus directe.
+Avantage de `_` sur `%` : token `IDENTIFIER` (comparaison directe `v.value is '_'`)
+vs `%` qui était un token `MATH` binaire — impossible à utiliser seul grammaticalement.
+Convention FP universelle : Haskell, Elm, OCaml, Scala utilisent `_` comme wildcard.
 
-> Aucune modification du lexer pour `$` — le nœud PipeOp gère la substitution.
+> Aucune modification du lexer pour `_` — le nœud PipeOp gère la substitution.
 
 ### 2b. Nouveau token `COMPOSE_FWD`
 
@@ -225,28 +224,27 @@ exports.ComposeOp = class ComposeOp extends Base
     lambda.compileToFragments o, LEVEL_PAREN
 ```
 
-### 2e. Placeholder `$` dans `PipeOp.compilePipeIntoCall`
+### 2e. Placeholder `_` dans `PipeOp.compilePipeIntoCall`
 
 **Fichier** : `src/nodes.coffee`, méthode `PipeOp.compilePipeIntoCall`
 
-`$` est un `IdentifierLiteral` avec valeur `'$'` — la détection est directe :
+`_` est un `IdentifierLiteral` avec valeur `'_'` — la détection est directe :
 
 ```diff
   compilePipeIntoCall: (o, leftFrags, call) ->
     fnFrags  = call.variable.compileToFragments o, LEVEL_ACCESS
 -   argFrags = [].concat leftFrags
 +
-+   # Détecter la présence d'un placeholder $
-+   # $ est un IdentifierLiteral — plus simple à détecter que l'ancien MATH('%')
-+   hasPlaceholder = call.args.some (a) ->
++   # Détecter la présence d'un placeholder _
++   # _ est un IdentifierLiteral — convention FP universelle (Haskell, Elm, OCaml)
++   isPlaceholder = (a) ->
 +     v = a.unwrap()
-+     v instanceof IdentifierLiteral and v.value is '$' and not v.properties?.length
-
-+   if hasPlaceholder
++     v instanceof IdentifierLiteral and v.value is '_' and not v.properties?.length
++
++   if call.args.some isPlaceholder
 +     argFrags = []
 +     for arg in call.args
-+       v = arg.unwrap()
-+       if v instanceof IdentifierLiteral and v.value is '$' and not v.properties?.length
++       if isPlaceholder arg
 +         argFrags = argFrags.concat leftFrags
 +       else
 +         argFrags.push @makeCode ', '  unless argFrags.length is 0
@@ -260,13 +258,11 @@ exports.ComposeOp = class ComposeOp extends Base
     [].concat fnFrags, [@makeCode '('], argFrags, [@makeCode ')']
 ```
 
-> **Attention — ambiguïté `$` comme identifiant existant** : si un appel de pipe
-> passe une vraie variable nommée `$` (ex. jQuery `$ = require 'jquery'`), elle
-> serait interprétée comme placeholder. Pour lever l'ambiguïté, documenter que
-> dans le contexte d'un pipe call `a |> f $, x`, `$` non qualifié est TOUJOURS
-> le placeholder. Si on veut passer la variable `$` comme premier argument sans
-> pipe, écrire `f($, x)` en syntaxe explicite. Alternativement, utiliser
-> `PipeOp` pour détecter uniquement `$` SANS propriété et avec `spaced = true`.
+> **Ambiguïté `_` comme identifiant existant** : si un pipe call passe une vraie
+> variable nommée `_` (lodash : `_ = require 'lodash'`), elle serait interprétée
+> comme placeholder. En pratique, lodash s'utilise via ses méthodes (`_.map`, etc.),
+> pas en passant `_` nu en argument — la collision est rare. Si nécessaire, utiliser
+> la syntaxe explicite `f(_, x)` pour passer la variable `_` sans ambiguïté.
 
 ---
 
@@ -276,8 +272,8 @@ exports.ComposeOp = class ComposeOp extends Base
 - [ ] `>>` et `<<` restent des bitshifts valides (SHIFT inchangé)
 - [ ] `>>>` reste valide (SHIFT inchangé)
 - [ ] `<<=` reste valide (dans COMPOUND_ASSIGN, non modifié)
-- [ ] `$` dans pipe → positionnement explicite de la valeur pipée
-- [ ] `f $` (jQuery-style sans pipe) : `$` reste un identifiant normal hors contexte pipe
+- [ ] `_` dans pipe → positionnement explicite de la valeur pipée
+- [ ] `_` hors contexte pipe reste un identifiant normal
 - [ ] Tests composition : tous les tests "COMPOSITION >>=" passent
-- [ ] Tests placeholder : tous les tests "PLACEHOLDER $" passent
+- [ ] Tests placeholder : tous les tests "PLACEHOLDER _" passent
 - [ ] `node ./bin/cake test` — 0 régression

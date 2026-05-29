@@ -14,7 +14,7 @@
 # Function Definition
 
 x = 1
-let y = {}
+let y = new Object()
 y.x = -> 3
 ok x is 1
 ok typeof(y.x) is 'function'
@@ -140,23 +140,23 @@ test "#4884: object-destructured splatted parameters", ->
 test "@-parameters: automatically assign an argument's value to a property of the context", ->
   nonce = {}
 
-  ((@prop) ->).call context = {}, nonce
+  ((@prop) ->).call context = new Object(), nonce
   eq nonce, context.prop
 
   # Allow splats alongside the special argument
-  ((splat..., @prop) ->).apply context = {}, [0, 0, nonce]
+  ((splat..., @prop) ->).apply context = new Object(), [0, 0, nonce]
   eq nonce, context.prop
 
   # Should not trigger implicit call, e.g. rest ... => rest(...)
-  ((splat ..., @prop) ->).apply context = {}, [0, 0, nonce]
+  ((splat ..., @prop) ->).apply context = new Object(), [0, 0, nonce]
   eq nonce, context.prop
 
   # Allow the argument itself to be a splat
-  ((@prop...) ->).call context = {}, 0, nonce, 0
+  ((@prop...) ->).call context = new Object(), 0, nonce, 0
   eq nonce, context.prop[1]
 
   # Should not trigger implicit call, e.g. rest ... => rest(...)
-  ((@prop ...) ->).call context = {}, 0, nonce, 0
+  ((@prop ...) ->).call context = new Object(), 0, nonce, 0
   eq nonce, context.prop[1]
 
   # The argument should not be able to be referenced normally
@@ -197,7 +197,7 @@ test "destructuring in function definition", ->
     eq 2, c
   ) {a: [1], c: 2}
 
-  context = {}
+  context = new Object()
   (([{a: [b, c = 2], @d, e = 4}]...) ->
     eq 1, b
     eq 2, c

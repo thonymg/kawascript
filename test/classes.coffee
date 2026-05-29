@@ -344,8 +344,8 @@ test "mild metaprogramming", ->
 
 test "namespaced classes do not reserve their function name in outside scope", ->
 
-  one = {}
-  two = {}
+  one = new Object()
+  two = new Object()
 
   class one.Klass
     @label = "one"
@@ -519,7 +519,7 @@ test "#1009: classes with reserved words as determined names", -> (->
   eq 'function', typeof (class @for)
   ok not /\beval\b/.test (class @eval).toString()
   ok not /\barguments\b/.test (class @arguments).toString()
-).call {}
+).call new Object()
 
 test "#1482: classes can extend expressions", ->
   id = (x) -> x
@@ -1715,7 +1715,7 @@ test 'Bound method of base class called as callback is ok', ->
   eq baseBound(), 3
 
 test 'Bound method of prop-named class called as callback is ok', ->
-  Hive = {}
+  Hive = new Object()
   class Hive.Bee
     constructor: (@prop = 3) ->
       f = @baseBound
@@ -1749,7 +1749,7 @@ test 'Bound method of class with expression base class called as callback is ok'
 
 test 'Bound method of class with expression class name called as callback is ok', ->
   calledF = no
-  obj = {}
+  obj = new Object()
   B = class
   f = ->
     throw new Error if calledF
@@ -1786,7 +1786,7 @@ test 'Bound method of anonymous child class called as callback is ok', ->
 
 test 'Bound method of immediately instantiated class with expression base class called as callback is ok', ->
   calledF = no
-  obj = {}
+  obj = new Object()
   B = class
   f = ->
     throw new Error if calledF
@@ -1866,7 +1866,7 @@ test "#4827: executable class body wrappers have correct context", ->
     class @B extends @A
       @property = 1
 
-  o = {}
+  o = new Object()
   test.call o
   ok typeof o.A is typeof o.B is 'function'
 

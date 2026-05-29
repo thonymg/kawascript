@@ -237,9 +237,9 @@ test "for-from loops over generators", ->
   array1 = [50, 30, 70, 20]
   gen = -> yield from array1
 
-  array2 = []
-  array3 = []
-  array4 = []
+  array2 = new Array()
+  array3 = new Array()
+  array4 = new Array()
 
   iterator = gen()
   for x from iterator
@@ -272,14 +272,14 @@ test "for-from comprehensions over generators", ->
 
 test "from as an iterable variable name in a for loop declaration", ->
   from = [1, 2, 3]
-  out = []
+  out = new Array()
   for i from from
     out.push i
   arrayEq from, out
 
 test "from as an iterator variable name in a for loop declaration", ->
   a = [1, 2, 3]
-  b = []
+  b = new Array()
   for from from a
     b.push from
   arrayEq a, b
@@ -292,12 +292,12 @@ test "from as a destructured object variable name in a for loop declaration", ->
       from: 3
       to: 4
   ]
-  b = []
+  b = new Array()
   for {from, to} in a
     b.push from
   arrayEq b, [1, 3]
 
-  c = []
+  c = new Array()
   for {to, from} in a
     c.push from
   arrayEq c, [1, 3]
@@ -310,7 +310,7 @@ test "from as a destructured, aliased object variable name in a for loop declara
       b: 3
       c: 4
   ]
-  out = []
+  out = new Array()
 
   for {b: from} in a
     out.push from
@@ -321,7 +321,7 @@ test "from as a destructured array variable name in a for loop declaration", ->
     [1, 2]
     [3, 4]
   ]
-  b = []
+  b = new Array()
   for [from, to] from a
     b.push from
   arrayEq b, [1, 3]

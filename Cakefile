@@ -68,7 +68,7 @@ transpile = (code, options = {}) ->
   options.transform =   process.env.TRANSFORM isnt 'false'
   options.sourceType ?= 'script'
   babel = require '@babel/core'
-  presets = []
+  presets = new Array()
   # Exclude the `modules` plugin in order to not break the `}(this));`
   # at the end of the `build:browser` code block.
   presets.push ['@babel/env', {modules: no}] if options.transform
@@ -406,7 +406,7 @@ runTests = (CoffeeScript) ->
   # `global.test`.
   global.currentFile = null
   global.passedTests = 0
-  global.failures    = []
+  global.failures    = new Array()
 
   global[name] = func for name, func of require 'assert'
 
@@ -419,7 +419,7 @@ runTests = (CoffeeScript) ->
   global.yellow = yellow
   global.reset  = reset
 
-  asyncTests = []
+  asyncTests = new Array()
   onFail = (description, fn, err) ->
     failures.push
       filename: global.currentFile

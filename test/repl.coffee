@@ -22,7 +22,7 @@ class MockOutputStream extends Stream
   constructor: ->
     super()
     @writable = true
-    @written = []
+    @written = new Array()
 
   write: (data) ->
     # console.log 'output write', arguments

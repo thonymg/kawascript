@@ -63,13 +63,13 @@ test "async return value (explicit)", ->
 test "async parameters", ->
   [out1, out2] = [null, null]
   a = (a, [b, c])->
-    arr = [a]
+    arr = Array.of(a)
     arr.push b
     arr.push c
     await return arr
 
   b = (a, b, c = 5)->
-    arr = [a]
+    arr = Array.of(a)
     arr.push b
     arr.push c
     await return arr

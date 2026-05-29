@@ -69,7 +69,7 @@ test 'Confirm functionality of `deepStrictIncludeExpectedProperties`', ->
     x: looseArray [
       1
       2
-    ]
+    ].slice()
 
   check 'Array length matches', doesNotThrow,
     x: [1, 2, 3]
@@ -103,7 +103,7 @@ EMPTY_BLOCK =
   directives: []
 
 ID = (name, additionalProperties = {}) ->
-  Object.assign({
+  Object.assign(new Object(), {
     type: 'Identifier'
     name
   }, additionalProperties)

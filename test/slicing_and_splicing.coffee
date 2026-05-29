@@ -80,16 +80,16 @@ test "#4631: slicing with space before and/or after the dots", ->
 # Splicing
 
 test "basic splicing", ->
-  ary = [0..9]
+  ary = [0..9].slice()
   ary[5..9] = [0, 0, 0]
   arrayEq [0, 1, 2, 3, 4, 0, 0, 0], ary
 
-  ary = [0..9]
+  ary = [0..9].slice()
   ary[2...8] = []
   arrayEq [0, 1, 8, 9], ary
 
 test "unbounded splicing", ->
-  ary = [0..9]
+  ary = [0..9].slice()
   ary[3..] = [9, 8, 7]
   arrayEq [0, 1, 2, 9, 8, 7]. ary
 
@@ -102,22 +102,22 @@ test "unbounded splicing", ->
 test "splicing with variables as endpoints", ->
   [a, b] = [1, 8]
 
-  ary = [0..9]
+  ary = [0..9].slice()
   ary[a..b] = [2, 3]
   arrayEq [0, 2, 3, 9], ary
 
-  ary = [0..9]
+  ary = [0..9].slice()
   ary[a...b] = [5]
   arrayEq [0, 5, 8, 9], ary
 
 test "splicing with expressions as endpoints", ->
   [a, b] = [1, 3]
 
-  ary = [0..9]
+  ary = [0..9].slice()
   ary[ a+1 .. 2*b+1 ] = [4]
   arrayEq [0, 1, 4, 8, 9], ary
 
-  ary = [0..9]
+  ary = [0..9].slice()
   ary[a+1...2*b+1] = [4]
   arrayEq [0, 1, 4, 7, 8, 9], ary
 
@@ -127,17 +127,17 @@ test "splicing to the end, against a one-time function", ->
     if ary
       throw 'err'
     else
-      ary = [1, 2, 3]
+      ary = [1, 2, 3].slice()
 
   fn()[0..] = 1
 
   arrayEq ary, [1]
 
 test "the return value of a splice literal should be the RHS", ->
-  ary = [0, 0, 0]
+  ary = [0, 0, 0].slice()
   eq (ary[0..1] = 2), 2
 
-  ary = [0, 0, 0]
+  ary = [0, 0, 0].slice()
   eq (ary[0..] = 3), 3
 
   arrayEq [ary[0..0] = 0], [0]
@@ -145,20 +145,20 @@ test "the return value of a splice literal should be the RHS", ->
 test "#1723: operator precedence in unbounded splice compilation", ->
   n = 4 # some truthy number in `list`
 
-  list = [0..9]
+  list = [0..9].slice()
   list[..n] = n
   arrayEq [n..9], list
 
-  list = [0..9]
+  list = [0..9].slice()
   list[..n or 0] = n
   arrayEq [n..9], list
 
-  list = [0..9]
+  list = [0..9].slice()
   list[..if n then n else 0] = n
   arrayEq [n..9], list
 
 test "#2953: methods on endpoints in assignment from array splice literal", ->
-  list = [0..9]
+  list = [0..9].slice()
 
   Number.prototype.same = -> this
   list[1.same()...9.same()] = 5

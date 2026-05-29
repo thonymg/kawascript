@@ -65,7 +65,7 @@ test "#756: conditional assignment edge cases", ->
 
 test "operations on soaked properties", ->
   # TODO: improve this test
-  a = b: {c: 0}
+  a = b: Object.assign new Object(), {c: 0}
   eq 1,   a?.b.c +  1
   eq 1,   a?.b.c += 1
   eq 2,   ++a?.b.c
@@ -88,7 +88,7 @@ test "soaked method invocation", ->
   eq 2        , counter
 
 test "#733: conditional assignments", ->
-  a = b: {c: null}
+  a = b: Object.assign new Object(), {c: null}
   eq a.b?.c?(), undefined
   a.b?.c or= (it) -> it
   eq a.b?.c?(1), 1

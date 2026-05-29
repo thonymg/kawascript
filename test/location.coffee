@@ -61,7 +61,7 @@ test "Verify location of generated tokens (with indented first line)", ->
 
 getMatchingTokens = (str, wantedTokens...) ->
   tokens = CoffeeScript.tokens str
-  matchingTokens = []
+  matchingTokens = new Array()
   i = 0
   for token in tokens
     if token[1].replace(/^'|'$/g, '"') is wantedTokens[i]

@@ -291,7 +291,7 @@ test "Basic `until`", ->
 test "Basic `loop`", ->
 
   i = 5
-  list = []
+  list = new Array()
   loop
     i -= 1
     break if i is 0

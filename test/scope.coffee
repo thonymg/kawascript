@@ -45,18 +45,19 @@ test "loop variable should be accessible after for-from loop", ->
   d = (x for x from [1,2])
   eq x, 2
 
-class Array then slice: fail # needs to be global
-class Object then hasOwnProperty: fail
 test "#1973: redefining Array/Object constructors shouldn't confuse __X helpers", ->
   arr = [1..4]
   arrayEq [3, 4], arr[2..]
   obj = {arr}
-  for own k of obj
-    eq arr, obj[k]
+  do ->
+    class Array then slice: fail # local inner scope, no literals inside
+    class Object then hasOwnProperty: fail
+    for own k of obj
+      eq arr, obj[k]
 
 test "#2255: global leak with splatted @-params", ->
   ok not x?
-  arrayEq [0], ((@x...) -> @x).call {}, 0
+  arrayEq [0], ((@x...) -> @x).call new Object(), 0
   ok not x?
 
 test "#1183: super + fat arrows", ->
@@ -121,7 +122,7 @@ test "#3259: leak with @-params within destructured parameters", ->
   fn = ({@foo}, [@bar], [{@baz}]) ->
     foo = bar = baz = false
 
-  fn.call {}, {foo: 'foo'}, ['bar'], [{baz: 'baz'}]
+  fn.call new Object(), {foo: 'foo'}, ['bar'], [{baz: 'baz'}]
 
   eq 'undefined', typeof foo
   eq 'undefined', typeof bar

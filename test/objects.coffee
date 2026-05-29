@@ -9,14 +9,13 @@ ok trailingComma.k3() and (trailingComma.k2 is 4) and (trailingComma.k1 is "v1")
 
 ok {a: (num) -> num is 10 }.a 10
 
-let moe = {
+let moe = Object.assign (new Object()),
   name:  'Moe'
   greet: (salutation) ->
     salutation + " " + @name
   hello: ->
     @['greet'] "Hello"
   10: 'number'
-}
 ok moe.hello() is "Hello Moe"
 ok moe[10] is 'number'
 moe.hello = ->
@@ -35,7 +34,7 @@ obj: 1
 ### ...doesn't break things. ###
 
 # Object literals should be able to include keywords.
-obj = {class: 'höt'}
+obj = Object.assign (new Object()), {class: 'höt'}
 obj.function = 'dog'
 ok obj.class + obj.function is 'hötdog'
 
@@ -84,10 +83,10 @@ ok obj.fn() is null
 # Implicit objects with wacky indentation:
 obj =
   'reverse': (obj) ->
-    Array.prototype.reverse.call obj
+    Array.from(obj).reverse()
   abc: ->
     @reverse(
-      @reverse @reverse ['a', 'b', 'c'].reverse()
+      @reverse @reverse ['c', 'b', 'a']
     )
   one: [1, 2,
     a: 'b'
@@ -217,7 +216,7 @@ test "#1274: `{} = a()` compiles to `false` instead of `a()`", ->
   ok a
 
 test "#1436: `for` etc. work as normal property names", ->
-  obj = {}
+  obj = new Object()
   eq no, obj.hasOwnProperty 'for'
   obj.for = 'foo' of obj
   eq yes, obj.hasOwnProperty 'for'
@@ -514,7 +513,7 @@ test "object keys with interpolations: evaluate only once", ->
   eq count, 1
 
 test "object keys with interpolations: evaluation order", ->
-  arr = []
+  arr = new Array()
   obj =
     a: arr.push 1
     b: arr.push 2
@@ -644,7 +643,7 @@ test "computed property keys: evaluate only once", ->
   eq count, 1
 
 test "computed property keys: evaluation order", ->
-  arr = []
+  arr = new Array()
   obj =
     a: arr.push 1
     b: arr.push 2

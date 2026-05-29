@@ -257,20 +257,20 @@ test "splat extraction from generators", ->
 
 test "for-from loops over Array", ->
   array1 = [50, 30, 70, 20]
-  array2 = []
+  array2 = new Array()
   for x from array1
     array2.push(x)
   arrayEq array1, array2
 
   array1 = [[20, 30], [40, 50]]
-  array2 = []
+  array2 = new Array()
   for [a, b] from array1
     array2.push(b)
     array2.push(a)
   arrayEq array2, [30, 20, 50, 40]
 
   array1 = [{a: 10, b: 20, c: 30}, {a: 40, b: 50, c: 60}]
-  array2 = []
+  array2 = new Array()
   for {a: a, b, c: d} from array1
     array2.push([a, b, d])
   arrayEq array2, [[10, 20, 30], [40, 50, 60]]
