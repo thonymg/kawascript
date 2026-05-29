@@ -1,4 +1,4 @@
-# Block B — Ergonomie du Pipe : Placeholder `%` et Composition `>>`/`<<`
+# Block B — Ergonomie du Pipe : Placeholder `$` et Composition `>>=`
 
 ## Prérequis
 
@@ -9,32 +9,28 @@
 
 | Feature | État |
 |---------|------|
-| `%` comme placeholder de pipe | ❌ `%` est le modulo — parsing incorrect |
-| `>>` composition forward | ❌ `>>` est le décalage bit-à-droite |
-| `<<` composition backward | ❌ `<<` est le décalage bit-à-gauche |
+| `$` comme placeholder de pipe | ❌ `$` identifiant pris → ambiguïté avec usages jQuery/existants |
+| `>>=` composition forward | ❌ `>>=` est le compound-assign de shift-droit |
 
 Vérification :
 ```
-5 |> add % 3   →  add % 3(5)   # FAUX — % = modulo
-h = f >> g     →  h = f >> g   # FAUX — >> = bitshift
+5 |> add $ 3   →  add $(3)(5)   # FAUX — $ est un identifiant
+h = f >>= g    →  h = (f >>= g) # FAUX — >>= = compound assign
 ```
 
 ## Spécification
 
 ```coffee
-# Placeholder : % = valeur pipée, position explicite
-"hello" |> slice %, 1, 3    # → slice("hello", 1, 3)
-users   |> reduce %, 0, fn  # → reduce(users, 0, fn)
+# Placeholder : $ = valeur pipée, position explicite
+"hello" |> slice $, 1, 3    # → slice("hello", 1, 3)
+users   |> reduce $, 0, fn  # → reduce(users, 0, fn)
 
-# Composition forward : f >> g = (x) -> g(f(x))
-transform = double >> inc   # → (x) -> inc(double(x))
-5 |> double >> inc          # → inc(double(5)) = 11
-
-# Composition backward : f << g = (x) -> f(g(x))
-transform = inc << double   # → (x) -> inc(double(x))   (même résultat, ordre déclaratif inversé)
+# Composition forward : f >>= g = (x) -> g(f(x))
+transform = double >>= inc   # → (x) -> inc(double(x))
+5 |> double >>= inc          # → inc(double(5)) = 11
 ```
 
-> `%` et `>>` sont interdépendants car ils font partie de la même PR de refactoring
+> `$` et `>>=` sont interdépendants car ils font partie de la même PR de refactoring
 > du lexer (précédences) et des mêmes tests "pipeline ergonomique".
 
 ---
@@ -47,22 +43,22 @@ Ajouter une nouvelle section "PHASE 2 — ERGONOMIE" :
 
 ```coffee
 # ─────────────────────────────────────────────────────────────────────────────
-# 12. PLACEHOLDER %
+# 12. PLACEHOLDER $
 # ─────────────────────────────────────────────────────────────────────────────
 
-test "placeholder % — valeur pipée en position non-première", ->
+test "placeholder $ — valeur pipée en position non-première", ->
   slice = (str, start, end) -> str.slice start, end
-  eq ("hello" |> slice %, 1, 3), "ell"
+  eq ("hello" |> slice $, 1, 3), "ell"
 
-test "placeholder % — valeur pipée comme dernier argument", ->
+test "placeholder $ — valeur pipée comme dernier argument", ->
   myReduce = (init, fn, data) -> data.reduce fn, init
-  result = [1, 2, 3] |> myReduce 0, ((a, b) -> a + b), %
+  result = [1, 2, 3] |> myReduce 0, ((a, b) -> a + b), $
   eq result, 6
 
-test "placeholder % — compiles to positional insert", ->
+test "placeholder $ — compiles to positional insert", ->
   eqJS """
     slice = (str, start, end) -> str.slice start, end
-    result = "hello" |> slice %, 1, 3
+    result = "hello" |> slice $, 1, 3
   """, """
     const slice = function(str, start, end) {
       return str.slice(start, end);
@@ -70,44 +66,29 @@ test "placeholder % — compiles to positional insert", ->
     const result = slice("hello", 1, 3);
   """
 
-test "placeholder % — multiple placeholders are invalid (syntax error expected)", ->
-  throws (-> CoffeeScript.compile "a |> f %, %"), /placeholder/
+test "placeholder $ — multiple placeholders are invalid (syntax error expected)", ->
+  throws (-> CoffeeScript.compile "a |> f $, $"), /placeholder/
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 13. COMPOSITION >> ET <<
+# 13. COMPOSITION >>= 
 # ─────────────────────────────────────────────────────────────────────────────
 
-test "composition >> — f >> g = (x) -> g(f(x))", ->
+test "composition >>= — f >>= g = (x) -> g(f(x))", ->
   double = (x) -> x * 2
   inc    = (x) -> x + 1
-  transform = double >> inc
+  transform = double >>= inc
   eq transform(5), 11
 
-test "composition << — f << g = (x) -> f(g(x))", ->
-  double = (x) -> x * 2
-  inc    = (x) -> x + 1
-  transform = inc << double   # inc(double(x))
-  eq transform(5), 11
-
-test "composition >> est left-associative", ->
+test "composition >>= est left-associative", ->
   a = (x) -> x + 1
   b = (x) -> x * 2
   c = (x) -> x - 3
-  # (a >> b) >> c = (x) -> c(b(a(x)))
-  eq ((a >> b >> c)(4)), c(b(a(4)))
+  # (a >>= b) >>= c = (x) -> c(b(a(x)))
+  eq ((a >>= b >>= c)(4)), c(b(a(4)))
 
-test "composition >> — compiles to IIFE wrapping", ->
+test "composition >>= — compiles to function wrapping", ->
   eqJS """
-    transform = double >> inc
-  """, """
-    const transform = function(__x) {
-      return inc(double(__x));
-    };
-  """
-
-test "composition << — compiles to IIFE wrapping", ->
-  eqJS """
-    transform = inc << double
+    transform = double >>= inc
   """, """
     const transform = function(__x) {
       return inc(double(__x));
@@ -117,13 +98,13 @@ test "composition << — compiles to IIFE wrapping", ->
 test "pipe avec composition", ->
   double = (x) -> x * 2
   inc    = (x) -> x + 1
-  eq (5 |> double >> inc), 11
+  eq (5 |> double >>= inc), 11
 
 test "chaîne de composition puis pipe", ->
   double = (x) -> x * 2
   inc    = (x) -> x + 1
   negate = (x) -> -x
-  transform = double >> inc >> negate
+  transform = double >>= inc >>= negate
   eq (5 |> transform), -11
 ```
 
@@ -131,50 +112,70 @@ test "chaîne de composition puis pipe", ->
 
 ## Étape 2 — Implémentation
 
-### 2a. Nouveau token `PIPE_PLACEHOLDER`
+### 2a. Placeholder `$`
 
 **Fichier** : `src/lexer.coffee`
 
-Le `%` est TOUJOURS dans `MATH`. On ne peut pas le retirer car `a % b` doit rester valide.
-La solution : le placeholder `%` n'est valide QU'à l'intérieur d'un appel de pipe.
-La désambiguïsation se fait au niveau du **nœud PipeOp** (à la compilation), pas au lexer.
+`$` est déjà un **identifiant valide** en CoffeeScript (le regex `IDENTIFIER` inclut `[$\w\x7f-\uffff]+`
+— ligne ~1279 de lexer.coffee). Il est lexé en `IDENTIFIER` avec valeur `'$'`, pas en opérateur.
+Une variable locale `$ = tokens.length - 1` existe dans `matchWithInterpolations`
+(ligne 962) et reste valide car `$` n'est pas promu keyword.
 
-Le token `MATH` avec valeur `'%'` est réutilisé. PipeOp détectera sa présence dans
-ses arguments et le remplacera par la valeur pipée.
+La solution est identique à l'ancienne approche `%` : **aucune modification du lexer**.
+La désambiguïsation se fait uniquement au niveau du **nœud PipeOp** : quand un argument
+du call est un `IdentifierLiteral` de valeur `'$'` sans propriétés, c'est le placeholder.
 
-> Aucune modification du lexer pour `%` — le nœud PipeOp gère la substitution.
+Avantage de `$` sur `%` : `$` produit un token `IDENTIFIER` (simple comparaison
+`arg.base?.value is '$'`) alors que `%` produisait un token `MATH` (`Op` sans second
+opérande) — la détection est plus directe.
 
-### 2b. Nouveaux tokens `COMPOSE_FWD` et `COMPOSE_BWD`
+> Aucune modification du lexer pour `$` — le nœud PipeOp gère la substitution.
+
+### 2b. Nouveau token `COMPOSE_FWD`
 
 **Fichier** : `src/lexer.coffee`
 
-`>>` et `<<` sont actuellement dans `SHIFT`. Retirer `>>` et `<<` de `SHIFT` et
-les gérer séparément :
-
-```diff
-# Ligne ~1439
--SHIFT = ['<<', '>>', '>>>']
-+SHIFT = ['>>>']   # Garder seulement >>>
+`>>=` est actuellement dans `COMPOUND_ASSIGN` (ligne ~1429) :
+```coffee
+COMPOUND_ASSIGN = [
+  '-=', '+=', '/=', '*=', '%=', '||=', '&&=', '?=', '<<=', '>>=', '>>>='  # ← >>=
+  '&=', '^=', '|=', '**=', '//=', '%%='
+]
 ```
 
-Dans `literalToken` (la fonction qui produit les tokens d'opérateurs) :
+Cela signifie que `a >>= 3` (right-shift-assign) ne fonctionnera plus — **breaking change
+délibéré** : `>>=` est repurposé pour la composition de fonctions.
+
+`<<` et `>>` (bitshift) restent intacts dans `SHIFT = ['<<', '>>', '>>>']`.
+
+Diff dans `src/lexer.coffee` :
 
 ```diff
-    else if value is '|>'       then tag = 'PIPE'
-+   else if value is '>>'       then tag = 'COMPOSE_FWD'
-+   else if value is '<<'       then tag = 'COMPOSE_BWD'
-    else if value is '|' and @tag() in LINE_BREAK then tag = 'MATCH_PIPE'
+# Ligne ~1429 — retirer >>= de COMPOUND_ASSIGN
+ COMPOUND_ASSIGN = [
+-  '-=', '+=', '/=', '*=', '%=', '||=', '&&=', '?=', '<<=', '>>=', '>>>='  
++  '-=', '+=', '/=', '*=', '%=', '||=', '&&=', '?=', '<<=', '>>>='  # >>= retiré
+   '&=', '^=', '|=', '**=', '//=', '%%='
+ ]
 ```
 
-Dans le regex `OPERATOR` (~ligne 1325), `>>` et `<<` sont déjà couverts par
-`([&|<>*/%])\2=?`. L'ordre des conditions dans `literalToken` assure que `>>` → `COMPOSE_FWD`
-est essayé AVANT `SHIFT`.
+Dans `literalToken`, ajouter **avant** le check `COMPOUND_ASSIGN` (ligne ~804) :
 
-Ajouter `COMPOSE_FWD` et `COMPOSE_BWD` à `UNFINISHED` :
+```diff
+    else if value in MATH            then tag = 'MATH'
+    else if value in COMPARE         then tag = 'COMPARE'
++   else if value is '>>='           then tag = 'COMPOSE_FWD'
+    else if value in COMPOUND_ASSIGN then tag = 'COMPOUND_ASSIGN'
+```
+
+Le regex `OPERATOR` (~ligne 1326) capture déjà `>>=` comme token 3 chars via
+`([&|<>*/%])\2=?` — aucune modification du regex nécessaire.
+
+Ajouter `COMPOSE_FWD` à `UNFINISHED` :
 ```diff
 exports.UNFINISHED = UNFINISHED = [...,
 -  'BIN?', 'EXTENDS', 'PIPE']
-+  'BIN?', 'EXTENDS', 'PIPE', 'COMPOSE_FWD', 'COMPOSE_BWD']
++  'BIN?', 'EXTENDS', 'PIPE', 'COMPOSE_FWD']
 ```
 
 ### 2c. Règles grammaticales
@@ -184,19 +185,18 @@ exports.UNFINISHED = UNFINISHED = [...,
 Dans `Operation` (bloc des opérateurs binaires), ajouter après la règle PIPE :
 
 ```coffee
-o 'Expression COMPOSE_FWD Expression', -> new ComposeOp $1, $3, 'fwd'
-o 'Expression COMPOSE_BWD Expression', -> new ComposeOp $1, $3, 'bwd'
+o 'Expression COMPOSE_FWD Expression', -> new ComposeOp $1, $3
 ```
 
 Dans `operators` (table de précédences), ajouter **au-dessus** de PIPE :
 
 ```coffee
-['left', 'COMPOSE_FWD', 'COMPOSE_BWD']  # plus haut que PIPE
+['left', 'COMPOSE_FWD']  # plus haut que PIPE
 ['left', 'PIPE']
 ```
 
-> `>>` doit avoir une précédence PLUS HAUTE que `|>` pour que
-> `5 |> double >> inc` parse comme `5 |> (double >> inc)`.
+> `>>=` doit avoir une précédence PLUS HAUTE que `|>` pour que
+> `5 |> double >>= inc` parse comme `5 |> (double >>= inc)`.
 
 ### 2d. Nœud `ComposeOp`
 
@@ -207,61 +207,46 @@ Ajouter après la classe `PipeOp` :
 ```coffee
 #### ComposeOp
 
-# La composition de fonctions : `f >> g` = `(x) -> g(f(x))`
-#                               `f << g` = `(x) -> f(g(x))`
+# La composition de fonctions : `f >>= g` = `(x) -> g(f(x))`
 exports.ComposeOp = class ComposeOp extends Base
-  constructor: (@left, @right, @direction) -> super()
+  constructor: (@left, @right) -> super()
   children: ['left', 'right']
   isStatement: NO
 
   compileNode: (o) ->
     # Générer un nom de variable temporaire unique pour le paramètre
     paramName = o.scope.freeVariable '__x', reserve: yes
-    paramFrags = [@makeCode paramName]
 
-    # Selon la direction, first(x) → second(result) ou l'inverse
-    [first, second] = if @direction is 'fwd'
-      [@left, @right]
-    else
-      [@right, @left]
-
-    # Compiler first(x)
-    innerCall = new Call first, [new IdentifierLiteral paramName]
-    # Compiler second(innerCall)
-    outerCall = new Call second, [innerCall]
-    # Envelopper dans une lambda : (x) -> outerCall
+    # f >>= g  =  (x) -> g(f(x))
+    innerCall = new Call @left,  [new IdentifierLiteral paramName]
+    outerCall = new Call @right, [innerCall]
     body = new Block [outerCall]
     lambda = new Code [new Param new IdentifierLiteral(paramName)], body
     lambda.compileToFragments o, LEVEL_PAREN
 ```
 
-### 2e. Placeholder `%` dans `PipeOp.compilePipeIntoCall`
+### 2e. Placeholder `$` dans `PipeOp.compilePipeIntoCall`
 
 **Fichier** : `src/nodes.coffee`, méthode `PipeOp.compilePipeIntoCall`
 
-Chercher un argument `MATH('%')` dans `call.args` et le remplacer par `leftFrags` :
+`$` est un `IdentifierLiteral` avec valeur `'$'` — la détection est directe :
 
 ```diff
   compilePipeIntoCall: (o, leftFrags, call) ->
     fnFrags  = call.variable.compileToFragments o, LEVEL_ACCESS
 -   argFrags = [].concat leftFrags
 +
-+   # Détecter la présence d'un placeholder %
-+   placeholderIdx = call.args.findIndex (a) ->
-+     a.unwrap() instanceof Op and a.unwrap().operator is '%' and
-+     a.unwrap().second is undefined  # unaire — impossible, mais guard de sécurité
-+   # Forme plus simple : chercher un Value qui wraps un Op('%', undefined)
-+   # En pratique : arg est une Value(Literal('%')) ou un MATH('%') nu
-+   # → chercher `arg instanceof Value and arg.base?.value is '%' and not arg.properties.length`
++   # Détecter la présence d'un placeholder $
++   # $ est un IdentifierLiteral — plus simple à détecter que l'ancien MATH('%')
 +   hasPlaceholder = call.args.some (a) ->
 +     v = a.unwrap()
-+     v instanceof IdentifierLiteral and v.value is '%'
++     v instanceof IdentifierLiteral and v.value is '$' and not v.properties?.length
 
 +   if hasPlaceholder
 +     argFrags = []
 +     for arg in call.args
 +       v = arg.unwrap()
-+       if v instanceof IdentifierLiteral and v.value is '%'
++       if v instanceof IdentifierLiteral and v.value is '$' and not v.properties?.length
 +         argFrags = argFrags.concat leftFrags
 +       else
 +         argFrags.push @makeCode ', '  unless argFrags.length is 0
@@ -275,21 +260,24 @@ Chercher un argument `MATH('%')` dans `call.args` et le remplacer par `leftFrags
     [].concat fnFrags, [@makeCode '('], argFrags, [@makeCode ')']
 ```
 
-> **Note** : `%` dans le contexte d'un appel implicite `f %, x` — le `%` sera
-> parsé comme `MATH('%')`. Il faut vérifier si le token correspond à un `Op` avec
-> opérateur `%` et sans opérande gauche (unaire). En pratique, chercher si `arg`
-> compile exactement en `%` suffit — via `arg.compileToFragments(o).map(f => f.code).join('') === '%'`.
-> Utiliser cette approche si la détection par type de nœud s'avère difficile.
+> **Attention — ambiguïté `$` comme identifiant existant** : si un appel de pipe
+> passe une vraie variable nommée `$` (ex. jQuery `$ = require 'jquery'`), elle
+> serait interprétée comme placeholder. Pour lever l'ambiguïté, documenter que
+> dans le contexte d'un pipe call `a |> f $, x`, `$` non qualifié est TOUJOURS
+> le placeholder. Si on veut passer la variable `$` comme premier argument sans
+> pipe, écrire `f($, x)` en syntaxe explicite. Alternativement, utiliser
+> `PipeOp` pour détecter uniquement `$` SANS propriété et avec `spaced = true`.
 
 ---
 
 ## Checklist de livraison
 
-- [ ] `>>` n'est plus un bitshift : `f >> g` ne produit plus de bitshift
-- [ ] `<<` n'est plus un bitshift : `f << g` ne produit plus de bitshift  
-- [ ] `%` dans pipe → positionnement explicite de la valeur pipée
-- [ ] `a % b` hors de pipe reste valide (modulo)
-- [ ] Tests composition : tous les tests "COMPOSITION >> ET <<" passent
-- [ ] Tests placeholder : tous les tests "PLACEHOLDER %" passent
-- [ ] Tests existants de shift bitwise : confirmer `a >>> b` fonctionne toujours
+- [ ] `>>=` n'est plus un compound-assign : `f >>= g` produit une composition
+- [ ] `>>` et `<<` restent des bitshifts valides (SHIFT inchangé)
+- [ ] `>>>` reste valide (SHIFT inchangé)
+- [ ] `<<=` reste valide (dans COMPOUND_ASSIGN, non modifié)
+- [ ] `$` dans pipe → positionnement explicite de la valeur pipée
+- [ ] `f $` (jQuery-style sans pipe) : `$` reste un identifiant normal hors contexte pipe
+- [ ] Tests composition : tous les tests "COMPOSITION >>=" passent
+- [ ] Tests placeholder : tous les tests "PLACEHOLDER $" passent
 - [ ] `node ./bin/cake test` — 0 régression

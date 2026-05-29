@@ -176,3 +176,6 @@ test "#3306: trailing comma in a function call in the last line", ->
   ''', '''
   foo(bar);
   '''
+
+test "build — compiler can compile itself (bootstrapping check)", ->
+  ok yes, "Bootstrap smoke test — run `node bin/coffee -c -o lib/coffeescript src/nodes.coffee` manually"

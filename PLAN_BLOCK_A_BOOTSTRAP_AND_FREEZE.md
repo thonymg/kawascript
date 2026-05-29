@@ -122,100 +122,355 @@ test "build — compiler can compile itself (bootstrapping check)", ->
 
 ## Étape 2 — Implémentation
 
-### 2a. Fix bootstrapping — renommer `match` comme identifiant
+### 2a. Fix bootstrapping — analyse approfondie du problème `match`
 
-**Règle** : Dans tous les fichiers `src/*.coffee`, renommer les usages de `match` comme
-variable/paramètre (pas les chaînes `'match'` ni les identifiants de classe `MatchNode`) :
+#### Pourquoi `match` est un mot-clé qui brise le bootstrapping
 
-| Contexte | Nouveau nom |
-|----------|------------|
-| `match = regex.exec @chunk` | `m = regex.exec @chunk` |
-| `return 0 unless match = X.exec @chunk` | `return 0 unless m = X.exec @chunk` |
-| `replaceInContext: (match, replacement)` | `replaceInContext: (matchFn, replacement)` |
-| `if match child` | `if matchFn child` |
-| `when match = @matchWithInterpolations ...` | `when m = @matchWithInterpolations ...` |
+Quand le compilateur KawaScript compile `src/*.coffee`, il passe par `identifierToken`
+dans le lexer. La logique de détection des mots-clés (lignes ~184-187 de `src/lexer.coffee`) :
 
-**Fichier par fichier** :
+```coffee
+tag =
+  if colon or prev? and
+     (prev[0] in ['.', '?.', '::', '?::'] or ...)
+    'PROPERTY'
+  else
+    'IDENTIFIER'
 
-#### `src/lexer.coffee` (~42 occurrences)
-
-La quasi-totalité sont `match = SomeRegex.exec @chunk` ou destructurations du résultat.
-Renommer en `m` systématiquement :
-
-```diff
--   return 0 unless match = NUMBER.exec @chunk
-+   return 0 unless m = NUMBER.exec @chunk
--   number = match[0]
-+   number = m[0]
+if tag is 'IDENTIFIER' and (id in JS_KEYWORDS or id in COFFEE_KEYWORDS)
+  tag = id.toUpperCase()  # 'match' → token 'MATCH'
 ```
 
-```diff
--   return 0 unless match = MULTI_DENT.exec chunk
-+   return 0 unless m = MULTI_DENT.exec chunk
+`'match'` est dans `COFFEE_KEYWORDS` (ligne ~1241). Le tag `'MATCH'` est produit **seulement
+lorsque `tag is 'IDENTIFIER'`**, c'est-à-dire lorsque `match` apparaît **en position de valeur**
+(pas après un `.`). Le token `MATCH` est alors traité par Jison comme le mot-clé du
+pattern matching, et toute règle grammaticale attendant un `IDENTIFIER` ou un `ASSIGN`
+échoue.
+
+#### Taxonomie des 4 catégories d'usage de `match` dans les sources
+
+##### Catégorie A — Identifiant seul ❌ PROBLÉMATIQUE — doit être renommé
+
+`match` apparaît comme identifiant autonome en position de valeur, paramètre, ou assignation.
+Le lexer le tokenise en `MATCH` keyword → parse error.
+
+```coffee
+# Assignation
+match = NUMBER.exec @chunk          # → MATCH = ... : erreur syntaxique
+return 0 unless match = MULTI_DENT.exec chunk  # idem
+
+# Destructuration
+[input, id, colon] = match          # → [x] = MATCH : erreur
+
+# Lecture de propriété sur la variable locale
+number = match[0]                   # → number = MATCH [0] : erreur
+
+# Paramètre de fonction ou callback
+replaceInContext: (match, replacement) ->  # → paramètre nommé MATCH : erreur
+(match, offset) =>                          # idem
 ```
 
-Cas particuliers — `switch ... when match = ...` :
-```diff
--   when match = REGEX_ILLEGAL.exec @chunk
-+   when m = REGEX_ILLEGAL.exec @chunk
--     @error "...", offset: match.index + match[1].length
-+     @error "...", offset: m.index + m[1].length
+##### Catégorie B — Accès propriété `obj.match(...)` ✅ SÛRE — ne pas toucher
+
+Quand `match` suit un `.`, `?.` ou `::`, le tag est `'PROPERTY'`, pas `'IDENTIFIER'`.
+Le test `if tag is 'IDENTIFIER' and id in COFFEE_KEYWORDS` **ne s'active pas**.
+
+```coffee
+# SAFE — match est une méthode de String, Array, etc.
+chunk.match COMMENT              # tag = PROPERTY → pas de conflit
+code.match(/\r?\n/g)             # idem
+firstLine?.match(/^#!\s*.../)    # idem (optional chaining)
+longFlag.match(OPTIONAL)         # idem
+multiline.buffer.match /\n/      # idem
 ```
 
-#### `src/nodes.coffee` (~12 occurrences)
+**Subtilité** : `match = chunk.match COMMENT` — ici `match` apparaît **deux fois** :
+- LHS `match` = identifiant seul → Catégorie A → doit être renommé
+- `chunk.match` = accès propriété → Catégorie B → laissé tel quel
 
+**Résultat après renommage** :
 ```diff
--   replaceInContext: (match, replacement) ->
-+   replaceInContext: (matchFn, replacement) ->
-      parent.traverseChildren yes, (child) ->
--       if match child
-+       if matchFn child
-          ...
--         return true if child.replaceInContext match, replacement
-+         return true if child.replaceInContext matchFn, replacement
-      else if match children
-+     else if matchFn children
+- return 0 unless match = chunk.match COMMENT
++ return 0 unless m = chunk.match COMMENT
 ```
 
-Et pour les appels de `replaceInContext` plus loin dans le fichier :
-```diff
--   node.replaceInContext (n) -> n is target
-+   # Les lambdas passées restent des lambdas, pas de changement
+##### Catégorie C — Identifiant commençant par "match" mais plus long ✅ SÛRE — ne pas toucher
+
+Le regex `IDENTIFIER` capture la **plus longue séquence** possible de `[$\w\x7f-\uffff]+`.
+`matchWithInterpolations` est lexé comme UN token, pas comme `match` + `WithInterpolations`.
+Le test `id in COFFEE_KEYWORDS` compare `'matchWithInterpolations' === 'match'` → `false`.
+
+```coffee
+# SAFE — identifiants distincts du keyword 'match'
+matchWithInterpolations: (regex, ...) ->  # méthode → 'matchWithInterpolations'
+@matchWithInterpolations HEREGEX, '///'  # appel → 'matchWithInterpolations'
+matchedHere    # différent → 'matchedHere'
+matchedComment # différent → 'matchedComment'
+matchIllegal   # différent → 'matchIllegal'
 ```
 
-Les deux autres usages dans `nodes.coffee` :
-```diff
--   val.replace SIMPLE_STRING_OMIT, (match, offset) =>
-+   val.replace SIMPLE_STRING_OMIT, (m, offset) =>
--         (@finalChunk and offset + match.length is val.length)
-+         (@finalChunk and offset + m.length is val.length)
+##### Catégorie D — Littéraux string et identifiants en majuscules ✅ SÛRE — ne pas toucher
+
+```coffee
+# SAFE — dans une chaîne littérale, jamais vu par identifierToken
+COFFEE_KEYWORDS = ['let', 'match']       # la chaîne 'match'
+
+# SAFE — identifiants différents (majuscule initiale ou tout en majuscules)
+MATCH_PIPE   # constante, pas 'match'
+MATCH        # constante token
+Match:       # règle grammar.coffee, pas 'match' (majuscule)
 ```
 
+---
+
+#### Inventaire complet fichier par fichier
+
+##### `src/lexer.coffee` — ~37 usages de Catégorie A à renommer
+
+| Ligne | Code actuel | Catégorie | Traitement |
+|-------|-------------|-----------|------------|
+| 109 | `(match, offset) =>` | A — param callback | → `(m, offset) =>` |
+| 128 | `return 0 unless match = regex.exec @chunk` | A | → `m` |
+| 129 | `[input, id, colon] = match` | A | → `m` |
+| 265 | `return 0 unless match = NUMBER.exec @chunk` | A | → `m` |
+| 267 | `number = match[0]` | A | → `m[0]` |
+| 314 | `while match = HEREDOC_INDENT.exec doc` | A | → `m` |
+| 315 | `attempt = match[1]` | A | → `m[1]` |
+| 331 | `return 0 unless match = chunk.match COMMENT` | A (LHS) + B (RHS) | LHS → `m`, `chunk.match` intact |
+| 332 | `[..., ...] = match` | A | → `m` |
+| 433 | `(match = (matchedHere = ...) or ...)` | A | → `m` |
+| 436–437 | `match[1]`, `match[0]` | A | → `m[1]`, `m[0]` |
+| 446 | `when match = REGEX_ILLEGAL.exec @chunk` | A | → `m` |
+| 447–448 | `match[2]`, `match.index`, `match[1].length` | A | → `m` |
+| 449 | `when match = @matchWithInterpolations HEREGEX, '///'` | A (LHS) | → `m` |
+| 450 | `{tokens, index} = match` | A | → `m` |
+| 460 | `when match = REGEX.exec @chunk` | A | → `m` |
+| 461 | `[regex, body, closed] = match` | A | → `m` |
+| 515 | `return 0 unless match = MULTI_DENT.exec chunk` | A | → `m` |
+| 516 | `indent = match[0]` | A | → `m[0]` |
+| 601 | `(match = WHITESPACE.exec @chunk) or (nline = ...)` | A | → `m` |
+| 604–605 | `match` dans ternaire (×3) | A | → `m` |
+| 631 | `match = JSX_IDENTIFIER.exec(...) or ...` | A | → `m` |
+| 632 | `return 0 unless match and ...` | A | → `m` |
+| 639 | `[input, id] = match` | A | → `m` |
+| 703 | `match = JSX_IDENTIFIER.exec(@chunk[end...]) or ...` | A | → `m` |
+| 704 | `if not match or match[1] isnt ...` | A | → `m` |
+| 707 | `[, fullTagName] = match` | A | → `m` |
+| 756 | `if match = OPERATOR.exec @chunk` | A | → `m` |
+| 757 | `[value] = match` | A | → `m` |
+| 901 | `break unless match = interpolators.exec str` | A | → `m` |
+| 902 | `[interpolator] = match` | A | → `m` |
+| 1160 | `match = invalidEscapeRegex.exec str` | A | → `m` |
+| 1161 | `return unless match` | A | → `m` |
+| 1162 | `[[], before, ...] = match` | A | → `m` |
+| 1170 | `match.index` | A | → `m.index` |
+
+**NE PAS RENOMMER** dans lexer.coffee :
+- `matchWithInterpolations` (méthode) — Catégorie C
+- `matchedHere`, `matchedComment`, `matchIllegal` — Catégorie C
+- `MATCH_PIPE`, `'match'` dans `COFFEE_KEYWORDS` — Catégorie D
+- `@matchWithInterpolations(...)` (appels) — Catégorie C
+
+##### `src/nodes.coffee` — 8 usages de Catégorie A
+
+| Ligne | Code actuel | Traitement |
+|-------|-------------|------------|
+| 346 (commentaire) | `# for which \`match\` returns` | commentaire → laisser tel quel |
+| 348 | `replaceInContext: (match, replacement) ->` | param → `matchFn` |
+| 353 | `if match child` | → `matchFn child` |
+| 357 | `return true if child.replaceInContext match, replacement` | → `matchFn` |
+| 358 | `else if match children` | → `matchFn children` |
+| 362 | `return true if children.replaceInContext match, replacement` | → `matchFn` |
+| 1032 | `val.replace SIMPLE_STRING_OMIT, (match, offset) =>` | → `(m, offset) =>` |
+| 1034 | `offset + match.length` | → `m.length` |
+| 6295 | `body.replace regex, (match, backslash, nul, ...args) ->` | → `(m, backslash, nul, ...)` |
+
+> Pourquoi `matchFn` et pas `m` pour `replaceInContext` ? Parce que c'est un **prédicat
+> fonctionnel** (une fonction), pas un résultat de regex. Les callers dans le fichier passent
+> des lambdas : `@replaceInContext (n) -> n is target, ...` — aucune modification des
+> call sites nécessaire, la lambda est passée en argument sous un autre nom.
+
+##### `src/grammar.coffee` — 2 usages de Catégorie A
+
+| Ligne | Code actuel | Traitement |
+|-------|-------------|------------|
+| 40 | `action = if match = unwrap.exec action then match[1] else ...` | → `m` |
+
+Les autres occurrences (`Match:`, `MATCH`, commentaires) — Catégorie C/D, intactes.
+
+##### `src/helpers.coffee` — 2 usages de Catégorie A (callbacks)
+
+| Ligne | Code actuel | Traitement |
+|-------|-------------|------------|
+| 309 | `(match, escapedBackslash, codePointHex, offset) ->` | → `(m, ...)` |
+| 317 | `return match unless shouldReplace` | → `return m` |
+
+##### `src/coffeescript.coffee` — 1 usage de Catégorie A
+
+| Ligne | Code actuel | Traitement |
+|-------|-------------|------------|
+| 37 | `encodeURIComponent(src).replace /%([0-9A-F]{2})/g, (match, p1) ->` | → `(m, p1) ->` |
+
+Les lignes 96 et 327 (`code.match(...)`, `firstLine?.match(...)`) — **Catégorie B**, safe.
+
+##### `src/optparse.coffee` — 4 usages de Catégorie A
+
+| Ligne | Code actuel | Traitement |
+|-------|-------------|------------|
+| 103 | `match = longFlag.match(OPTIONAL)` | LHS `match` → `m` ; `longFlag.match` intact (Catégorie B) |
+| 111 | `!!(match and match[1])` | → `!!(m and m[1])` |
+| 112 | `!!(match and match[2])` | → `!!(m and m[2])` |
+
+Les lignes 104, 105, 129, 149 (`shortFlag?.match(...)`, `longFlag.match(...)`, etc.) — **Catégorie B**, safe.
+
+##### `src/command.coffee` — 2 usages de Catégorie A
+
+| Ligne | Code actuel | Traitement |
+|-------|-------------|------------|
+| 143 | `[full, name, module] = match if match = module.match(/^(.*)=(.*)$/)` | LHS `match` et son usage → `m` ; `module.match(...)` intact (Catégorie B) |
+
+##### `src/rewriter.coffee` — 0 usage de Catégorie A ✅
+
+Toutes les occurrences de `match` dans rewriter.coffee sont dans des **commentaires**
+(lignes 105, 119, 138, 140, 753). Aucune modification requise.
+
+##### `src/repl.coffee` — 0 usage de Catégorie A ✅
+
+Les deux occurrences (`multiline.buffer.match /\n/`, `repl.line.match /^\s*$/`) sont
+des **accès de propriété** — Catégorie B. Safe.
+
+##### `src/sourcemap.litcoffee` — 0 usage de Catégorie A ✅
+
+Les deux occurrences sont dans du **texte en prose** (fichier literate). Aucune modification.
+
+---
+
+#### Choix du nom de remplacement : `m` vs alternatives
+
+| Option | Pour | Contre |
+|--------|------|--------|
+| `m` | Court, conventionnel (Perl/Ruby), différent de tout mot-clé | Très court, peut sembler cryptique hors contexte |
+| `regM` | Explicitement "regex match" | Verbose |
+| `matched` | Lisible | Potentiellement confondu avec un booléen |
+| `regexMatch` | Maximum clarté | Trop long, casse la lisibilité des lignes |
+
+**Choix retenu : `m`** pour les résultats de regex, `matchFn` pour le prédicat de `replaceInContext`.
+
+**Risque de collision de `m`** : Vérification manuelle dans chaque méthode concernée —
+`identifierToken`, `numberToken`, `commentToken`, `jsToken`, `regexToken`, `lineToken`,
+`whitespaceToken`, `jsxToken`, `literalToken`, `matchWithInterpolations`, `validateEscapes` :
+aucune n'utilise `m` comme variable locale existante. Safe.
+
+**Note** : les appels `@matchWithInterpolations(...)` dont le résultat était stocké dans
+`match` (Catégorie A) ne renomment que la **variable locale de stockage** en `m`.
+Le nom de la méthode `matchWithInterpolations` reste intact — Catégorie C.
+
+---
+
+#### Diffs de référence par méthode
+
 ```diff
--   body = body.replace regex, (match, backslash, nul, ...args) ->
-+   body = body.replace regex, (m, backslash, nul, ...args) ->
+# identifierToken (ligne 128)
+- return 0 unless match = regex.exec @chunk
+- [input, id, colon] = match
++ return 0 unless m = regex.exec @chunk
++ [input, id, colon] = m
+
+# numberToken (ligne 265)
+- return 0 unless match = NUMBER.exec @chunk
+- number = match[0]
++ return 0 unless m = NUMBER.exec @chunk
++ number = m[0]
+
+# commentToken (ligne 331) — noter chunk.match intact
+- return 0 unless match = chunk.match COMMENT
+- [commentWithSurroundingWhitespace, ...] = match
++ return 0 unless m = chunk.match COMMENT
++ [commentWithSurroundingWhitespace, ...] = m
+
+# jsToken (ligne 433)
+- (match = (matchedHere = HERE_JSTOKEN.exec(@chunk)) or JSTOKEN.exec(@chunk))
+- script = match[1]
+- {length} = match[0]
++ (m = (matchedHere = HERE_JSTOKEN.exec(@chunk)) or JSTOKEN.exec(@chunk))
++ script = m[1]
++ {length} = m[0]
+
+# regexToken (lignes 446–461)
+- when match = REGEX_ILLEGAL.exec @chunk
+-   @error "...", offset: match.index + match[1].length
+- when match = @matchWithInterpolations HEREGEX, '///'  # appel de méthode → intact
+-   {tokens, index} = match
+- when match = REGEX.exec @chunk
+-   [regex, body, closed] = match
++ when m = REGEX_ILLEGAL.exec @chunk
++   @error "...", offset: m.index + m[1].length
++ when m = @matchWithInterpolations HEREGEX, '///'
++   {tokens, index} = m
++ when m = REGEX.exec @chunk
++   [regex, body, closed] = m
+
+# lineToken (ligne 515)
+- return 0 unless match = MULTI_DENT.exec chunk
+- indent = match[0]
++ return 0 unless m = MULTI_DENT.exec chunk
++ indent = m[0]
+
+# whitespaceToken (lignes 601–605)
+- return 0 unless (match = WHITESPACE.exec @chunk) or (nline = ...)
+- prev[if match then 'spaced' else 'newLine'] = true if prev
+- if match then match[0].length else 0
++ return 0 unless (m = WHITESPACE.exec @chunk) or (nline = ...)
++ prev[if m then 'spaced' else 'newLine'] = true if prev
++ if m then m[0].length else 0
+
+# literalToken (ligne 756)
+- if match = OPERATOR.exec @chunk
+-   [value] = match
++ if m = OPERATOR.exec @chunk
++   [value] = m
+
+# matchWithInterpolations (ligne 901)
+- break unless match = interpolators.exec str
+- [interpolator] = match
++ break unless m = interpolators.exec str
++ [interpolator] = m
+
+# validateEscapes (lignes 1160–1170)
+- match = invalidEscapeRegex.exec str
+- return unless match
+- [[], before, octal, hex, unicodeCodePoint, unicode] = match
+- offset: match.index + before.length
++ m = invalidEscapeRegex.exec str
++ return unless m
++ [[], before, octal, hex, unicodeCodePoint, unicode] = m
++ offset: m.index + before.length
+
+# nodes.coffee — replaceInContext
+- replaceInContext: (match, replacement) ->
+-   if match child
+-   return true if child.replaceInContext match, replacement
+-   else if match children
+-   return true if children.replaceInContext match, replacement
++ replaceInContext: (matchFn, replacement) ->
++   if matchFn child
++   return true if child.replaceInContext matchFn, replacement
++   else if matchFn children
++   return true if children.replaceInContext matchFn, replacement
 ```
-
-#### `src/grammar.coffee` (~6 occurrences)
-
-```diff
--   when MATCH = some_regex.exec token
-+   when m = some_regex.exec token
-```
-
-#### `src/helpers.coffee`, `src/rewriter.coffee`, `src/coffeescript.coffee`, `src/command.coffee`, `src/optparse.coffee`, `src/repl.coffee`, `src/sourcemap.litcoffee`
-
-Même règle : remplacer les usages de `match` comme variable par `m`.
 
 **Vérification** après les renommages :
 
 ```bash
-node bin/coffee -c -o lib/coffeescript src/nodes.coffee
-# Doit compiler sans erreur
-node ./bin/cake build
-# Doit mettre à jour lib/coffeescript/*.js
-node ./bin/cake test
-# Doit passer tous les tests existants
+# Vérifier qu'il ne reste aucun 'match' seul (Catégorie A) dans les sources
+grep -n '\bmatch\b' src/lexer.coffee
+# Doit retourner UNIQUEMENT des commentaires et des Catégorie B/C/D
+
+# Compiler les fichiers critiques
+node bin/coffee -c -o lib/coffeescript src/nodes.coffee    # sans erreur
+node bin/coffee -c -o lib/coffeescript src/lexer.coffee    # sans erreur
+node ./bin/cake build   # met à jour lib/coffeescript/*.js
+node ./bin/cake test    # tous les tests passent
 ```
 
 ### 2b. Fix `Object.freeze` dans les corps de fonctions

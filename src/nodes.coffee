@@ -345,21 +345,21 @@ exports.Base = class Base
 
   # `replaceInContext` will traverse children looking for a node for which `match` returns
   # true. Once found, the matching node will be replaced by the result of calling `replacement`.
-  replaceInContext: (match, replacement) ->
+  replaceInContext: (matchFn, replacement) ->
     return false unless @children
     for attr in @children when children = @[attr]
       if Array.isArray children
         for child, i in children
-          if match child
+          if matchFn child
             children[i..i] = replacement child, @
             return true
           else
-            return true if child.replaceInContext match, replacement
-      else if match children
+            return true if child.replaceInContext matchFn, replacement
+      else if matchFn children
         @[attr] = replacement children, @
         return true
       else
-        return true if children.replaceInContext match, replacement
+        return true if children.replaceInContext matchFn, replacement
 
   invert: ->
     new Op '!', this
@@ -1029,9 +1029,9 @@ exports.StringLiteral = class StringLiteral extends Literal
           val = val.replace TRAILING_BLANK_LINE, '' if @finalChunk
           val
         else
-          val.replace SIMPLE_STRING_OMIT, (match, offset) =>
+          val.replace SIMPLE_STRING_OMIT, (m, offset) =>
             if (@initialChunk and offset is 0) or
-               (@finalChunk and offset + match.length is val.length)
+               (@finalChunk and offset + m.length is val.length)
               ''
             else
               ' '
@@ -4351,7 +4351,7 @@ exports.Code = class Code extends Base
     o.indent        += TAB
     delete o.bare
     delete o.isExistentialEquals
-    delete o.freezeLiteral
+    o.freezeLiteral = yes
 
   checkForDuplicateParams: ->
     paramNames = []
@@ -6030,11 +6030,13 @@ exports.MatchArm = class MatchArm extends Base
       if bindings.length > 0
         subjectCode = (f.code for f in subjectFrags).join ''
         guardFrags = for f in guardFrags
-          if f.code
-            Object.assign Object.create(Object.getPrototypeOf(f)), f,
-              code: f.code.replace new RegExp("\\b#{name}\\b", 'g'), subjectCode for name in bindings; f.code
-          else
+          unless f.code
             f
+          else
+            let code = f.code
+            for name in bindings
+              code = code.replace new RegExp("\\b#{name}\\b", 'g'), subjectCode
+            Object.assign Object.create(Object.getPrototypeOf(f)), f, {code}
       condFrags  = [].concat condFrags, [@makeCode ' && '], guardFrags
 
     opener = if isFirst then "#{idt}if (" else ' else if ('
@@ -6292,7 +6294,7 @@ makeDelimitedLiteral = (body, {delimiter: delimiterOption, escapeNewlines, doubl
       )                                    # (Possibly escaped) newlines.
     | (\\.)                                # Other escapes.
   ///g
-  body = body.replace regex, (match, backslash, nul, ...args) ->
+  body = body.replace regex, (m, backslash, nul, ...args) ->
     trailingNullEscape =
       args.shift() if convertTrailingNullEscapes
     delimiter =

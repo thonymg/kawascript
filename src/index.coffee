@@ -6,7 +6,7 @@ path          = require 'path'
 
 helpers       = CoffeeScript.helpers
 
-CoffeeScript.transpile = (js, options) ->
+transpile = (js, options) ->
   try
     babel = require '@babel/core'
   catch
@@ -14,25 +14,25 @@ CoffeeScript.transpile = (js, options) ->
       babel = require 'babel-core'
     catch
       # This error is only for Node, as CLI users will see a different error
-      # earlier if they don’t have Babel installed.
+      # earlier if they don't have Babel installed.
       throw new Error 'To use the transpile option, you must have the \'@babel/core\' module installed'
   babel.transform js, options
 
 # The `compile` method shared by the CLI, Node and browser APIs.
 universalCompile = CoffeeScript.compile
 # The `compile` method particular to the Node API.
-CoffeeScript.compile = (code, options) ->
+compile = (code, options) ->
   # Pass a reference to Babel into the compiler, so that the transpile option
   # is available in the Node API. We need to do this so that tools like Webpack
   # can `require('coffeescript')` and build correctly, without trying to
   # require Babel.
   if options?.transpile
-    options.transpile.transpile = CoffeeScript.transpile
+    options.transpile.transpile = transpile
   universalCompile.call CoffeeScript, code, options
 
 # Compile and execute a string of CoffeeScript (on the server), correctly
 # setting `__filename`, `__dirname`, and relative `require()`.
-CoffeeScript.run = (code, options = {}) ->
+run = (code, options = {}) ->
   mainModule = require.main
 
   # Set the filename.
@@ -56,14 +56,14 @@ CoffeeScript.run = (code, options = {}) ->
   options.inlineMap = true
 
   # Compile.
-  answer = CoffeeScript.compile code, options
+  answer = compile code, options
   code = answer.js ? answer
 
   mainModule._compile code, mainModule.filename
 
 # Compile and evaluate a string of CoffeeScript (in a Node.js-like environment).
 # The CoffeeScript REPL uses this to run the input.
-CoffeeScript.eval = (code, options = {}) ->
+evalCS = (code, options = {}) ->
   return unless code = code.trim()
   createContext = vm.Script.createContext ? vm.createContext
 
@@ -95,14 +95,15 @@ CoffeeScript.eval = (code, options = {}) ->
       _require.resolve = (request) -> Module._resolveFilename request, _module
   o = {}
   o[k] = v for own k, v of options
-  o.bare = on # ensure return value
-  js = CoffeeScript.compile code, o
+  o.bare = on      # ensure return value
+  o.replMode = on  # use var instead of const/let to prevent redeclaration across eval calls
+  js = compile code, o
   if sandbox is global
     vm.runInThisContext js
   else
     vm.runInContext js, sandbox
 
-CoffeeScript.register = -> require './register'
+register = -> require './register'
 
 # Throw error with deprecation warning when depending upon implicit `require.extensions` registration
 if require.extensions
@@ -112,18 +113,18 @@ if require.extensions
       Use CoffeeScript.register() or require the coffeescript/register module to require #{ext} files.
       """
 
-CoffeeScript._compileRawFileContent = (raw, filename, options = {}) ->
+_compileRawFileContent = (raw, filename, options = {}) ->
 
   # Strip the Unicode byte order mark, if this file begins with one.
   stripped = if raw.charCodeAt(0) is 0xFEFF then raw.substring 1 else raw
 
-  options = Object.assign {}, options,
+  options = helpers.merge options,
     filename: filename
     literate: helpers.isLiterate filename
     sourceFiles: [filename]
 
   try
-    answer = CoffeeScript.compile stripped, options
+    answer = compile stripped, options
   catch err
     # As the filename and code of a dynamically loaded file will be different
     # from the original file compiled with CoffeeScript.run, add that
@@ -132,29 +133,29 @@ CoffeeScript._compileRawFileContent = (raw, filename, options = {}) ->
 
   answer
 
-CoffeeScript._compileFile = (filename, options = {}) ->
+_compileFile = (filename, options = {}) ->
   raw = fs.readFileSync filename, 'utf8'
 
-  CoffeeScript._compileRawFileContent raw, filename, options
+  _compileRawFileContent raw, filename, options
 
 module.exports = CoffeeScript
 
-# Explicitly define all named exports so that Node’s automatic detection of
+# Explicitly define all named exports so that Node's automatic detection of
 # named exports from CommonJS packages finds all of them. This enables consuming
 # packages to write code like `import { compile } from 'coffeescript'`.
-# Don’t simplify this into a loop or similar; the `module.exports.name` part is
-# essential for Node’s algorithm to successfully detect the name.
+# Don't simplify this into a loop or similar; the `module.exports.name` part is
+# essential for Node's algorithm to successfully detect the name.
 module.exports.VERSION = CoffeeScript.VERSION
 module.exports.FILE_EXTENSIONS = CoffeeScript.FILE_EXTENSIONS
 module.exports.helpers = CoffeeScript.helpers
 module.exports.registerCompiled = CoffeeScript.registerCompiled
-module.exports.compile = CoffeeScript.compile
+module.exports.compile = compile
 module.exports.tokens = CoffeeScript.tokens
 module.exports.nodes = CoffeeScript.nodes
-module.exports.register = CoffeeScript.register
-module.exports.eval = CoffeeScript.eval
-module.exports.run = CoffeeScript.run
-module.exports.transpile = CoffeeScript.transpile
+module.exports.register = register
+module.exports.eval = evalCS
+module.exports.run = run
+module.exports.transpile = transpile
 module.exports.patchStackTrace = CoffeeScript.patchStackTrace
-module.exports._compileRawFileContent = CoffeeScript._compileRawFileContent
-module.exports._compileFile = CoffeeScript._compileFile
+module.exports._compileRawFileContent = _compileRawFileContent
+module.exports._compileFile = _compileFile

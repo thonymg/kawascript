@@ -106,7 +106,7 @@ exports.Lexer = class Lexer
       @locationDataCompensations[0] ?= 0
       @locationDataCompensations[0] -= 1
     code = code
-      .replace /\r/g, (match, offset) =>
+      .replace /\r/g, (m, offset) =>
         @locationDataCompensations[thusFar + offset] = 1
         ''
       .replace TRAILING_SPACES, ''
@@ -125,8 +125,8 @@ exports.Lexer = class Lexer
   identifierToken: ->
     inJSXTag = @atJSXTag()
     regex = if inJSXTag then JSX_ATTRIBUTE else IDENTIFIER
-    return 0 unless match = regex.exec @chunk
-    [input, id, colon] = match
+    return 0 unless m = regex.exec @chunk
+    [input, id, colon] = m
 
     # Preserve length of id for location data
     idLength = id.length
@@ -262,9 +262,9 @@ exports.Lexer = class Lexer
   # Matches numbers, including decimals, hex, and exponential notation.
   # Be careful not to interfere with ranges in progress.
   numberToken: ->
-    return 0 unless match = NUMBER.exec @chunk
+    return 0 unless m = NUMBER.exec @chunk
 
-    number = match[0]
+    number = m[0]
     lexedLength = number.length
 
     switch
@@ -311,8 +311,8 @@ exports.Lexer = class Lexer
       # Find the smallest indentation. It will be removed from all lines later.
       indent = null
       doc = (token[1] for token, i in tokens when token[0] is 'NEOSTRING').join '#{}'
-      while match = HEREDOC_INDENT.exec doc
-        attempt = match[1]
+      while m = HEREDOC_INDENT.exec doc
+        attempt = m[1]
         indent = attempt if indent is null or 0 < attempt.length < indent.length
 
     delimiter = quote.charAt(0)
@@ -328,8 +328,8 @@ exports.Lexer = class Lexer
   # stream and saved for later, to be reinserted into the output after
   # everything has been parsed and the JavaScript code generated.
   commentToken: (chunk = @chunk, {heregex, returnCommentTokens = no, offsetInChunk = 0} = {}) ->
-    return 0 unless match = chunk.match COMMENT
-    [commentWithSurroundingWhitespace, hereLeadingWhitespace, hereComment, hereTrailingWhitespace, lineComment] = match
+    return 0 unless m = chunk.match COMMENT
+    [commentWithSurroundingWhitespace, hereLeadingWhitespace, hereComment, hereTrailingWhitespace, lineComment] = m
     contents = null
     # Does this comment follow code on the same line?
     leadingNewline = /^\s*\n+\s*#/.test commentWithSurroundingWhitespace
@@ -430,11 +430,11 @@ exports.Lexer = class Lexer
   # Matches JavaScript interpolated directly into the source via backticks.
   jsToken: ->
     return 0 unless @chunk.charAt(0) is '`' and
-      (match = (matchedHere = HERE_JSTOKEN.exec(@chunk)) or JSTOKEN.exec(@chunk))
+      (m = (matchedHere = HERE_JSTOKEN.exec(@chunk)) or JSTOKEN.exec(@chunk))
     # Convert escaped backticks to backticks, and escaped backslashes
     # just before escaped backticks to backslashes
-    script = match[1]
-    {length} = match[0]
+    script = m[1]
+    {length} = m[0]
     @token 'JS', script, {length, data: {here: !!matchedHere}}
     length
 
@@ -443,11 +443,11 @@ exports.Lexer = class Lexer
   # borrow some basic heuristics from JavaScript and Ruby.
   regexToken: ->
     switch
-      when match = REGEX_ILLEGAL.exec @chunk
-        @error "regular expressions cannot begin with #{match[2]}",
-          offset: match.index + match[1].length
-      when match = @matchWithInterpolations HEREGEX, '///'
-        {tokens, index} = match
+      when m = REGEX_ILLEGAL.exec @chunk
+        @error "regular expressions cannot begin with #{m[2]}",
+          offset: m.index + m[1].length
+      when m = @matchWithInterpolations HEREGEX, '///'
+        {tokens, index} = m
         comments = []
         while matchedComment = HEREGEX_COMMENT.exec @chunk[0...index]
           {index: commentIndex} = matchedComment
@@ -457,8 +457,8 @@ exports.Lexer = class Lexer
           for commentOpts in comments
             @commentToken commentOpts.comment, Object.assign commentOpts, heregex: yes, returnCommentTokens: yes
         )
-      when match = REGEX.exec @chunk
-        [regex, body, closed] = match
+      when m = REGEX.exec @chunk
+        [regex, body, closed] = m
         @validateEscapes body, isRegex: yes, offsetInChunk: 1
         index = regex.length
         prev = @prev()
@@ -512,8 +512,8 @@ exports.Lexer = class Lexer
   # Keeps track of the level of indentation, because a single outdent token
   # can close multiple indents, so we need to know how far in we happen to be.
   lineToken: ({chunk = @chunk, offset = 0} = {}) ->
-    return 0 unless match = MULTI_DENT.exec chunk
-    indent = match[0]
+    return 0 unless m = MULTI_DENT.exec chunk
+    indent = m[0]
 
     prev = @prev()
     backslash = prev?[0] is '\\'
@@ -598,11 +598,11 @@ exports.Lexer = class Lexer
   # Matches and consumes non-meaningful whitespace. Tag the previous token
   # as being “spaced”, because there are some cases where it makes a difference.
   whitespaceToken: ->
-    return 0 unless (match = WHITESPACE.exec @chunk) or
+    return 0 unless (m = WHITESPACE.exec @chunk) or
                     (nline = @chunk.charAt(0) is '\n')
     prev = @prev()
-    prev[if match then 'spaced' else 'newLine'] = true if prev
-    if match then match[0].length else 0
+    prev[if m then 'spaced' else 'newLine'] = true if prev
+    if m then m[0].length else 0
 
   # Generate a newline token. Consecutive newlines get merged together.
   newlineToken: (offset) ->
@@ -628,15 +628,15 @@ exports.Lexer = class Lexer
     # Check the previous token to detect if attribute is spread.
     prevChar = if @tokens.length > 0 then @tokens[@tokens.length - 1][0] else ''
     if firstChar is '<'
-      match = JSX_IDENTIFIER.exec(@chunk[1...]) or JSX_FRAGMENT_IDENTIFIER.exec(@chunk[1...])
-      return 0 unless match and (
+      m = JSX_IDENTIFIER.exec(@chunk[1...]) or JSX_FRAGMENT_IDENTIFIER.exec(@chunk[1...])
+      return 0 unless m and (
         @jsxDepth > 0 or
         # Not the right hand side of an unspaced comparison (i.e. `a<b`).
         not (prev = @prev()) or
         prev.spaced or
         prev[0] not in COMPARABLE_LEFT_SIDE
       )
-      [input, id] = match
+      [input, id] = m
       fullId = id
       if '.' in id
         [id, properties...] = id.split '.'
@@ -700,11 +700,11 @@ exports.Lexer = class Lexer
           @matchWithInterpolations INSIDE_JSX, '>', '</', JSX_INTERPOLATION
         @mergeInterpolationTokens tokens, {endOffset: end, jsx: yes}, (value) =>
           @validateUnicodeCodePointEscapes value, delimiter: '>'
-        match = JSX_IDENTIFIER.exec(@chunk[end...]) or JSX_FRAGMENT_IDENTIFIER.exec(@chunk[end...])
-        if not match or match[1] isnt "#{jsxTag.name}#{(".#{property}" for property in jsxTag.properties).join ''}"
+        m = JSX_IDENTIFIER.exec(@chunk[end...]) or JSX_FRAGMENT_IDENTIFIER.exec(@chunk[end...])
+        if not m or m[1] isnt "#{jsxTag.name}#{(".#{property}" for property in jsxTag.properties).join ''}"
           @error "expected corresponding JSX closing tag for #{jsxTag.name}",
             jsxTag.origin.data.tagNameToken[2]
-        [, fullTagName] = match
+        [, fullTagName] = m
         afterTag = end + fullTagName.length
         if @chunk[afterTag] isnt '>'
           @error "missing closing > after tag name", offset: afterTag, length: 1
@@ -753,8 +753,8 @@ exports.Lexer = class Lexer
   # here. `;` and newlines are both treated as a `TERMINATOR`, we distinguish
   # parentheses that indicate a method call from regular parentheses, and so on.
   literalToken: ->
-    if match = OPERATOR.exec @chunk
-      [value] = match
+    if m = OPERATOR.exec @chunk
+      [value] = m
       @tagParameters() if CODE.test value
     else
       value = @chunk.charAt 0
@@ -898,8 +898,8 @@ exports.Lexer = class Lexer
       str = str[strPart.length..]
       offsetInChunk += strPart.length
 
-      break unless match = interpolators.exec str
-      [interpolator] = match
+      break unless m = interpolators.exec str
+      [interpolator] = m
 
       # To remove the `#` in `#{`.
       interpolationOffset = interpolator.length - 1
@@ -1157,9 +1157,9 @@ exports.Lexer = class Lexer
         REGEX_INVALID_ESCAPE
       else
         STRING_INVALID_ESCAPE
-    match = invalidEscapeRegex.exec str
-    return unless match
-    [[], before, octal, hex, unicodeCodePoint, unicode] = match
+    m = invalidEscapeRegex.exec str
+    return unless m
+    [[], before, octal, hex, unicodeCodePoint, unicode] = m
     message =
       if octal
         "octal escape sequences are not allowed"
@@ -1167,7 +1167,7 @@ exports.Lexer = class Lexer
         "invalid escape sequence"
     invalidEscape = "\\#{octal or hex or unicodeCodePoint or unicode}"
     @error "#{message} #{invalidEscape}",
-      offset: (options.offsetInChunk ? 0) + match.index + before.length
+      offset: (options.offsetInChunk ? 0) + m.index + before.length
       length: invalidEscape.length
 
   suppressSemicolons: ->
@@ -1235,7 +1235,7 @@ JS_KEYWORDS = [
 ]
 
 # CoffeeScript-only keywords.
-COFFEE_KEYWORDS = [
+let COFFEE_KEYWORDS = [
   'undefined', 'Infinity', 'NaN'
   'then', 'unless', 'until', 'loop', 'of', 'by', 'when'
   'let', 'match'

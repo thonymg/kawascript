@@ -34,7 +34,7 @@ base64encode = (src) -> switch
     # characters are used in the block, btoa will fail as it maxes out at UTF-8.
     # See https://developer.mozilla.org/en-US/docs/Web/API/WindowBase64/Base64_encoding_and_decoding#The_Unicode_Problem
     # for the gory details, and for the solution implemented here.
-    btoa encodeURIComponent(src).replace /%([0-9A-F]{2})/g, (match, p1) ->
+    btoa encodeURIComponent(src).replace /%([0-9A-F]{2})/g, (m, p1) ->
       String.fromCharCode '0x' + p1
   else
     throw new Error('Unable to base64 encode inline sourcemap.')

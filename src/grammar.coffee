@@ -37,7 +37,7 @@ o = (patternString, action, options) ->
     # This code block does string replacements in the generated `parser.js`
     # file, replacing the calls to the `LOC` function and other strings as
     # listed below.
-    action = if match = unwrap.exec action then match[1] else "(#{action}())"
+    action = if m = unwrap.exec action then m[1] else "(#{action}())"
 
     # All runtime functions we need are defined on `yy`
     action = action.replace /\bnew /g, '$&yy.'
@@ -97,7 +97,7 @@ o = (patternString, action, options) ->
 # `$1` would be the value of the first `Expression`, `$2` would be the token
 # for the `UNLESS` terminal, and `$3` would be the value of the second
 # `Expression`.
-grammar =
+let grammar =
 
   # The **Root** is the top-level node in the syntax tree. Since we parse bottom-up,
   # all parsing must end here.
@@ -994,7 +994,7 @@ grammar =
 # And not:
 #
 #     (2 + 3) * 4
-operators = [
+let operators = [
   ['right',     'DO_IIFE']
   ['left',      '.', '?.', '::', '?::']
   ['left',      'CALL_START', 'CALL_END']
@@ -1033,7 +1033,7 @@ operators = [
 # our **Jison.Parser**. We do this by processing all of our rules, recording all
 # terminals (every symbol which does not appear as the name of a rule above)
 # as "tokens".
-tokens = []
+let tokens = []
 for name, alternatives of grammar
   grammar[name] = for alt in alternatives
     for token in alt[0].split ' '

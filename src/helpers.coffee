@@ -306,7 +306,7 @@ unicodeCodePointToUnicodeEscapes = (codePoint) ->
 # Replace `\u{...}` with `\uxxxx[\uxxxx]` in regexes without `u` flag
 exports.replaceUnicodeCodePointEscapes = (str, {flags, error, delimiter = ''} = {}) ->
   shouldReplace = flags? and 'u' not in flags
-  str.replace UNICODE_CODE_POINT_ESCAPE, (match, escapedBackslash, codePointHex, offset) ->
+  str.replace UNICODE_CODE_POINT_ESCAPE, (m, escapedBackslash, codePointHex, offset) ->
     return escapedBackslash if escapedBackslash
 
     codePointDecimal = parseInt codePointHex, 16
@@ -314,7 +314,7 @@ exports.replaceUnicodeCodePointEscapes = (str, {flags, error, delimiter = ''} = 
       error "unicode code point escapes greater than \\u{10ffff} are not allowed",
         offset: offset + delimiter.length
         length: codePointHex.length + 4
-    return match unless shouldReplace
+    return m unless shouldReplace
 
     unicodeCodePointToUnicodeEscapes codePointDecimal
 

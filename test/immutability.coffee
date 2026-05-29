@@ -566,3 +566,44 @@ test "exported let compiles to exported let", ->
   """, bare: yes
   ok /\blet\b/.test(compiled), "Exported let should use let"
   ok not /\bvar\b/.test(compiled)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 5b. LITTÉRAUX — gel dans les corps de fonctions
+# ─────────────────────────────────────────────────────────────────────────────
+
+test "array literal inside function body is frozen", ->
+  eqJS """
+    f = -> [1, 2, 3]
+  """, """
+    const f = function() {
+      return Object.freeze([1, 2, 3]);
+    };
+  """
+
+test "object literal inside function body is frozen", ->
+  eqJS """
+    f = -> {a: 1}
+  """, """
+    const f = function() {
+      return Object.freeze({
+        a: 1
+      });
+    };
+  """
+
+test "literal inside arrow function is frozen", ->
+  eqJS """
+    f = (x) => {a: x}
+  """, """
+    const f = (x) => {
+      return Object.freeze({
+        a: x
+      });
+    };
+  """
+
+test "literal inside nested lambda is frozen", ->
+  compiled = CoffeeScript.compile """
+    f = (x) -> (y) -> {x, y}
+  """, bare: yes
+  eq (compiled.match /Object\.freeze/g)?.length, 1

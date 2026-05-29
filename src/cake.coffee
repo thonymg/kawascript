@@ -17,10 +17,10 @@ CoffeeScript = require './'
 CoffeeScript.register()
 
 # Keep track of the list of defined tasks, the accepted options, and so on.
-tasks     = {}
-options   = {}
-switches  = []
-oparse    = null
+let tasks     = {}
+let options   = {}
+let switches  = []
+let oparse    = null
 
 # Mixin the top-level Cake functions for Cakefiles to use directly.
 helpers.extend global,

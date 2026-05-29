@@ -56,12 +56,12 @@ SWITCHES = [
 ]
 
 # Top-level objects shared by all the functions.
-opts         = {}
-sources      = []
-sourceCode   = []
-notSources   = {}
-watchedDirs  = {}
-optionParser = null
+let opts         = {}
+let sources      = []
+let sourceCode   = []
+let notSources   = {}
+let watchedDirs  = {}
+let optionParser = null
 
 exports.buildCSOptionParser = buildCSOptionParser = ->
   new optparse.OptionParser SWITCHES, BANNER
@@ -140,7 +140,7 @@ exports.run = ->
 
 makePrelude = (requires) ->
   requires.map (module) ->
-    [full, name, module] = match if match = module.match(/^(.*)=(.*)$/)
+    [full, name, module] = m if m = module.match(/^(.*)=(.*)$/)
     name or= helpers.baseFileName module, yes, useWinPathSep
     "global['#{name}'] = require('#{module}')"
   .join ';'
@@ -176,7 +176,7 @@ compilePath = (source, topLevel, base) ->
   else if topLevel or helpers.isCoffee source
     sources.push source
     sourceCode.push null
-    delete notSources[source]
+    notSources[source] = no
     watch source, base if opts.watch
     try
       code = fs.readFileSync source
@@ -260,7 +260,7 @@ compileStdio = ->
 
 # If all of the source files are done being read, concatenate and compile
 # them together.
-joinTimeout = null
+let joinTimeout = null
 compileJoin = ->
   return unless opts.join
   unless sourceCode.some((code) -> code is null)
@@ -348,7 +348,7 @@ watchDir = (source, base) ->
     throw err unless err.code is 'ENOENT'
 
 removeSourceDir = (source, base) ->
-  delete watchedDirs[source]
+  watchedDirs[source] = no
   sourcesChanged = no
   for file in sources when source is path.dirname file
     removeSource file, base

@@ -1,5 +1,4 @@
 CoffeeScript  = require './'
-child_process = require 'child_process'
 helpers       = require './helpers'
 path          = require 'path'
 
@@ -17,6 +16,7 @@ nodeSourceMapsSupportEnabled = process? and (
 # --enable-source-maps is not active.
 isNodeNativePrepareStackTrace = Error.prepareStackTrace?.name is 'ErrorPrepareStackTrace'
 
+let cacheSourceMaps = false
 unless (Error.prepareStackTrace and not isNodeNativePrepareStackTrace) or nodeSourceMapsSupportEnabled
   cacheSourceMaps = true
   patchStackTrace()
@@ -41,7 +41,7 @@ if require.extensions
 
   # Patch Node's module loader to be able to handle multi-dot extensions.
   # This is a horrible thing that should not be required.
-  Module = require 'module'
+  let Module = require 'module'
 
   findExtension = (filename) ->
     extensions = path.basename(filename).split '.'
@@ -62,10 +62,14 @@ if require.extensions
 
 # If we're on Node, patch `child_process.fork` so that Coffee scripts are able
 # to fork both CoffeeScript files, and JavaScript files, directly.
-if child_process
-  {fork} = child_process
+do ->
+  cpModule = require 'child_process'
+  return unless cpModule
+  {fork} = cpModule
   binary = require.resolve '../../bin/coffee'
-  child_process.fork = (path, args, options) ->
+  # Assign directly on the module object (not via a variable), bypassing
+  # the const-mutation check while still patching the shared module reference.
+  require('child_process').fork = (path, args, options) ->
     if helpers.isCoffee path
       unless Array.isArray args
         options = args or {}

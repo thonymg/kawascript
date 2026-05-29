@@ -5,8 +5,8 @@ nodeREPL = require 'repl'
 CoffeeScript = require './'
 {merge, updateSyntaxError} = require './helpers'
 
-sawSIGINT = no
-transpile = no
+let sawSIGINT = no
+let transpile = no
 
 replDefaults =
   prompt: 'coffee> ',

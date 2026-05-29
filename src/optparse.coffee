@@ -84,8 +84,7 @@ OPTIONAL   = /\[(\w+(\*?))\]/
 # unspecified, leave it out by padding with `null`.
 buildRules = (ruleDeclarations) ->
   ruleList = for tuple in ruleDeclarations
-    tuple.unshift null if tuple.length < 3
-    buildRule tuple...
+    if tuple.length < 3 then buildRule null, tuple... else buildRule tuple...
   flagDict = {}
   for rule in ruleList
     # `shortFlag` is null if not provided in the rule.
@@ -100,7 +99,7 @@ buildRules = (ruleDeclarations) ->
 # Build a rule from a `-o` short flag, a `--output [DIR]` long flag, and the
 # description of what the option does.
 buildRule = (shortFlag, longFlag, description) ->
-  match     = longFlag.match(OPTIONAL)
+  m         = longFlag.match(OPTIONAL)
   shortFlag = shortFlag?.match(SHORT_FLAG)[1]
   longFlag  = longFlag.match(LONG_FLAG)[1]
   {
@@ -108,8 +107,8 @@ buildRule = (shortFlag, longFlag, description) ->
     shortFlag:    shortFlag
     longFlag:     longFlag
     description:  description
-    hasArgument:  !!(match and match[1])
-    isList:       !!(match and match[2])
+    hasArgument:  !!(m and m[1])
+    isList:       !!(m and m[2])
   }
 
 normalizeArguments = (args, flagDict) ->

@@ -346,6 +346,20 @@ test "pipe binds to const — no var in output", ->
   ok not /\bvar\b/.test(compiled), "Output must not contain 'var'"
   ok /const result/.test(compiled), "result should be const"
 
+test "object literal in pipe step lambda is frozen", ->
+  compiled = CoffeeScript.compile """
+    result = users
+      |> myMap (u) -> {name: u.name}
+  """, bare: yes
+  ok /Object\.freeze/.test(compiled), "Object literal in pipe step should be frozen"
+
+test "array literal in pipe step lambda is frozen", ->
+  compiled = CoffeeScript.compile """
+    result = data
+      |> myMap (x) -> [x, x * 2]
+  """, bare: yes
+  ok /Object\.freeze/.test(compiled), "Array literal in pipe step should be frozen"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 11. INTEGRATION — PATTERN MATCHING
 # ─────────────────────────────────────────────────────────────────────────────
