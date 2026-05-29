@@ -7,13 +7,11 @@ CoffeeScript              = require './lib/coffeescript'
 helpers                   = require './lib/coffeescript/helpers'
 
 # ANSI Terminal Colors.
-bold = red = green = yellow = reset = ''
-unless process.env.NODE_DISABLE_COLORS
-  bold   = '\x1B[0;1m'
-  red    = '\x1B[0;31m'
-  green  = '\x1B[0;32m'
-  yellow = '\x1B[0;33m'
-  reset  = '\x1B[0m'
+bold   = if process.env.NODE_DISABLE_COLORS then '' else '\x1B[0;1m'
+red    = if process.env.NODE_DISABLE_COLORS then '' else '\x1B[0;31m'
+green  = if process.env.NODE_DISABLE_COLORS then '' else '\x1B[0;32m'
+yellow = if process.env.NODE_DISABLE_COLORS then '' else '\x1B[0;33m'
+reset  = if process.env.NODE_DISABLE_COLORS then '' else '\x1B[0m'
 
 # Built file header.
 header = """
@@ -58,8 +56,7 @@ buildParser = ->
   fs.writeFileSync 'lib/coffeescript/parser.js', parser
 
 buildExceptParser = (callback) ->
-  files = fs.readdirSync 'src'
-  files = ('src/' + file for file in files when file.match(/\.(lit)?coffee$/))
+  files = ('src/' + file for file in fs.readdirSync('src') when file.match(/\.(lit)?coffee$/))
   run ['-c', '-o', 'lib/coffeescript'].concat(files), callback
 
 build = (callback) ->

@@ -14,7 +14,7 @@
 # Function Definition
 
 x = 1
-y = {}
+let y = {}
 y.x = -> 3
 ok x is 1
 ok typeof(y.x) is 'function'
@@ -30,7 +30,7 @@ ok y.x() is 3
 (one) -> (two) -> three four, (five) -> six seven, eight, (nine) ->
 
 # with multiple single-line functions on the same line.
-func = (x) -> (x) -> (x) -> x
+let func = (x) -> (x) -> (x) -> x
 ok func(1)(2)(3) is 3
 
 # Make incorrect indentation safe.

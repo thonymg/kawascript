@@ -55,7 +55,7 @@ test 'assignment attribute', ->
   eqJS '''
     <div x={y = 42} />
   ''', '''
-    var y;
+    let y;
 
     <div x={y = 42} />;
   '''
@@ -237,11 +237,11 @@ test 'multiple line escaped CoffeeScript with nested JSX', ->
 
     </Person>
   ''', '''
-    var n;
+    let n;
 
     <Person name={test() ? 'yes' : 'no'}>
     {(function() {
-      var i, len, results;
+      let i, len, results;
       results = [];
       for (i = 0, len = a.length; i < len; i++) {
         n = a[i];
@@ -293,7 +293,7 @@ test 'multiline tag with nested JSX within an attribute', ->
       blah blah blah
     </Person>
   ''', '''
-    var name;
+    let name;
 
     <Person name={name = formatName(user.name), <NameComponent name={name.toUppercase()} />}>
       blah blah blah
@@ -392,24 +392,22 @@ test 'heregex', ->
     ///
     <Person />
   ''', '''
-    var REGEX, test;
+const test = /432/gm; // this is a regex
 
-    test = /432/gm; // this is a regex
+6 / 432 / gm; // this is division
 
-    6 / 432 / gm; // this is division
+<Tag>
+{test = /<Tag>/} this is a regex containing something which looks like a tag
+</Tag>;
 
-    <Tag>
-    {test = /<Tag>/} this is a regex containing something which looks like a tag
-    </Tag>;
+<Person />;
 
-    <Person />;
+const REGEX = /^(\\/(?![s=])[^[\\/ ]*(?:<Tag\\/>(?:\\[sS]|[[^] ]*(?:\\[sS][^] ]*)*<Tag>tag<\\/Tag>])[^[\\/ ]*)*\\/)([imgy]{0,4})(?!w)/; // comment comment <comment>comment</comment>
+// comment comment
+// comment comment
+// comment comment
 
-    REGEX = /^(\\/(?![s=])[^[\\/ ]*(?:<Tag\\/>(?:\\[sS]|[[^] ]*(?:\\[sS][^] ]*)*<Tag>tag<\\/Tag>])[^[\\/ ]*)*\\/)([imgy]{0,4})(?!w)/; // comment comment <comment>comment</comment>
-    // comment comment
-    // comment comment
-    // comment comment
-
-    <Person />;
+<Person />;
   '''
 
 test 'comment within JSX is not treated as comment', ->
@@ -740,13 +738,11 @@ test 'unspaced less than inside JSX works but is not encouraged', ->
       div = 5
       html = <span>{a<div}</span>
     ''', '''
-      var a, div, html;
+      const a = 3;
 
-      a = 3;
+      const div = 5;
 
-      div = 5;
-
-      html = <span>{a < div}</span>;
+      const html = <span>{a < div}</span>;
     '''
 
 test 'unspaced less than before JSX works but is not encouraged', ->
@@ -755,13 +751,11 @@ test 'unspaced less than before JSX works but is not encouraged', ->
       res = 2<div
       html = <span />
     ''', '''
-      var div, html, res;
+      const div = 5;
 
-      div = 5;
+      const res = 2 < div;
 
-      res = 2 < div;
-
-      html = <span />;
+      const html = <span />;
     '''
 
 test 'unspaced less than after JSX works but is not encouraged', ->
@@ -770,13 +764,11 @@ test 'unspaced less than after JSX works but is not encouraged', ->
       html = <span />
       res = 2<div
     ''', '''
-      var div, html, res;
+      const div = 5;
 
-      div = 5;
+      const html = <span />;
 
-      html = <span />;
-
-      res = 2 < div;
+      const res = 2 < div;
     '''
 
 test '#4686: comments inside interpolations that also contain JSX tags', ->
@@ -885,9 +877,7 @@ test 'JSX fragments: fragment with component nodes', ->
         <OtherComponent />
       </Fragment>
   ''', '''
-    var Component;
-
-    Component = (props) => {
+    const Component = (props) => {
       return <Fragment>
         <OtherComponent />
         <OtherComponent />

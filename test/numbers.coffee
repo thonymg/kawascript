@@ -36,7 +36,7 @@ eq Number::toString, 2e308['toString'] # Infinity
 # Non-Integer Literals
 
 # Decimal number literals.
-value = .25 + .75
+let value = .25 + .75
 ok value is 1
 value = 0.0 + -.25 - -.75 + 0.0
 ok value is 0.5

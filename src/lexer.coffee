@@ -1236,6 +1236,7 @@ JS_KEYWORDS = [
 COFFEE_KEYWORDS = [
   'undefined', 'Infinity', 'NaN'
   'then', 'unless', 'until', 'loop', 'of', 'by', 'when'
+  'let'
 ]
 
 COFFEE_ALIAS_MAP =
@@ -1256,7 +1257,7 @@ COFFEE_KEYWORDS = COFFEE_KEYWORDS.concat COFFEE_ALIASES
 # used by CoffeeScript internally. We throw an error when these are encountered,
 # to avoid having a JavaScript error at runtime.
 RESERVED = [
-  'case', 'function', 'var', 'void', 'with', 'const', 'let', 'enum'
+  'case', 'function', 'var', 'void', 'with', 'const', 'enum'
   'native', 'implements', 'interface', 'package', 'private'
   'protected', 'public', 'static'
 ]

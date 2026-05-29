@@ -145,6 +145,7 @@ grammar =
     o 'Code'
     o 'Operation'
     o 'Assign'
+    o 'LetDeclaration'
     o 'If'
     o 'Try'
     o 'While'
@@ -153,6 +154,15 @@ grammar =
     o 'Class'
     o 'Throw'
     o 'Yield'
+  ]
+
+  # Explicit mutable variable declaration: `let x = value`
+  # Produces an Assign node with letDeclaration: yes, which the compiler
+  # will emit as `let x = value` and track as a mutable binding.
+  LetDeclaration: [
+    o 'LET SimpleAssignable = Expression',                -> new Assign $2, $4, null, letDeclaration: yes
+    o 'LET SimpleAssignable = TERMINATOR Expression',     -> new Assign $2, $5, null, letDeclaration: yes
+    o 'LET SimpleAssignable = INDENT Expression OUTDENT', -> new Assign $2, $5, null, letDeclaration: yes
   ]
 
   # Expressions which are written in single line and would otherwise require being
@@ -530,6 +540,12 @@ grammar =
                                                                                                       moduleDeclaration: 'export')
     o 'EXPORT Identifier = INDENT Expression OUTDENT',                     -> new ExportNamedDeclaration LOC(2,6)(new Assign $2, $5, null,
                                                                                                       moduleDeclaration: 'export')
+    o 'EXPORT LET SimpleAssignable = Expression',                          -> new ExportNamedDeclaration LOC(3,5)(new Assign $3, $5, null,
+                                                                                                      {letDeclaration: yes, moduleDeclaration: 'export'})
+    o 'EXPORT LET SimpleAssignable = TERMINATOR Expression',               -> new ExportNamedDeclaration LOC(3,6)(new Assign $3, $6, null,
+                                                                                                      {letDeclaration: yes, moduleDeclaration: 'export'})
+    o 'EXPORT LET SimpleAssignable = INDENT Expression OUTDENT',           -> new ExportNamedDeclaration LOC(3,7)(new Assign $3, $6, null,
+                                                                                                      {letDeclaration: yes, moduleDeclaration: 'export'})
     o 'EXPORT DEFAULT Expression',                                         -> new ExportDefaultDeclaration $3
     o 'EXPORT DEFAULT INDENT Object OUTDENT',                              -> new ExportDefaultDeclaration new Value $4
     o 'EXPORT EXPORT_ALL FROM String',                                     -> new ExportAllDeclaration new Literal($2), $4

@@ -58,7 +58,12 @@ ok isNaN "a#{2}" * 2
 ok "#{2}" is '2'
 ok "#{2}#{2}" is '22'
 
-[s, t, r, i, n, g] = ['s', 't', 'r', 'i', 'n', 'g']
+let s = 's'
+let t = 't'
+let r = 'r'
+let i = 'i'
+let n = 'n'
+let g = 'g'
 ok "#{s}#{t}#{r}#{i}#{n}#{g}" is 'string'
 ok "\#{s}\#{t}\#{r}\#{i}\#{n}\#{g}" is '#{s}#{t}#{r}#{i}#{n}#{g}'
 ok "\#{string}" is '#{string}'
@@ -100,17 +105,17 @@ ok "Hello #{world ? "#{hello}"}" is 'Hello World'
 
 ok "Hello #{"#{"#{obj["name"]}" + '!'}"}" is 'Hello Joe!'
 
-a = """
+let a = """
     Hello #{ "Joe" }
     """
 ok a is "Hello Joe"
 
 a = 1
-b = 2
+let b = 2
 c = 3
 ok "#{a}#{b}#{c}" is '123'
 
-result = null
+let result = null
 stash = (str) -> result = str
 stash "a #{ ('aa').replace /a/g, 'b' } c"
 ok result is 'a bb c'

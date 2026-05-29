@@ -2,8 +2,8 @@ The **Scope** class regulates lexical scoping within CoffeeScript. As you
 generate code, you create a tree of scopes in the same shape as the nested
 function bodies. Each scope knows about the variables declared within it,
 and has a reference to its parent enclosing scope. In this way, we know which
-variables are new and need to be declared with `var`, and which are shared
-with external scopes.
+variables are new and need to be declared with `const` or `let`, and which
+are shared with external scopes.
 
     exports.Scope = class Scope
 
@@ -44,10 +44,21 @@ function object that has a name filled in, or bottoms out.
         @parent.namedMethod()
 
 Look up a variable name in lexical scope, and declare it if it does not
-already exist.
+already exist. The default type is now `'const'` for user-declared variables;
+compiler-internal variables use `'var'` explicitly via `freeVariable`.
 
-      find: (name, type = 'var') ->
-        return yes if @check name
+      find: (name, type = 'const') ->
+        if @check name
+          # If the variable is `const` in a parent scope but not declared in
+          # this scope, shadow it with `let` so inner assignments don't try to
+          # modify an immutable outer binding.
+          if not @typeOwn(name) and @parent?.isConstVar(name)
+            # Shadow the outer const with a hoisted `let` in this scope.
+            # Using 'var' type so compileWithDeclarations includes it in the
+            # hoisted `let` block at the top of this function.
+            @add name, 'var'
+            return no
+          return yes
         @add name, type
         no
 
@@ -84,8 +95,34 @@ Gets the type of a variable.
         return v.type for v in @variables when v.name is name
         null
 
+Returns the type of a variable searching only the current scope level,
+without walking up to parent scopes.
+
+      typeOwn: (name) ->
+        return v.type for v in @variables when v.name is name
+        null
+
+Returns true if the variable is declared as `let` (mutable) in this scope
+or any parent scope.
+
+      isLetVar: (name) ->
+        t = @type name
+        return yes if t is 'let'
+        return no  if t is 'const' or t is 'var' or t is 'param'
+        @parent?.isLetVar(name) ? no
+
+Returns true if the variable is declared as `const` (immutable) in this
+scope or any parent scope.
+
+      isConstVar: (name) ->
+        t = @type name
+        return yes if t is 'const'
+        return no  if t is 'let' or t is 'var' or t is 'param'
+        @parent?.isConstVar(name) ? no
+
 If we need to store an intermediate result, find an available name for a
 compiler-generated variable. `_var`, `_var2`, and so on...
+These are declared with `'var'` type so they appear in the hoisted `let` block.
 
       freeVariable: (name, options={}) ->
         index = 0
@@ -103,12 +140,15 @@ Ensure that an assignment is made at the top of this scope
         @add name, {value, assigned: yes}, yes
         @hasAssignments = yes
 
-Does this scope have any declared variables?
+Does this scope have any compiler-internal declared variables?
+(Only `'var'` type — user `'const'`/`'let'` are inlined at their declaration.)
 
       hasDeclarations: ->
         !!@declaredVariables().length
 
-Return the list of variables first declared in this scope.
+Return the list of compiler-internal variables declared in this scope.
+User variables (`'const'`/`'let'`) are NOT included — they are inlined
+at their point of assignment and never hoisted.
 
       declaredVariables: ->
         (v.name for v in @variables when v.type is 'var').sort()

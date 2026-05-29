@@ -9,7 +9,7 @@ ok trailingComma.k3() and (trailingComma.k2 is 4) and (trailingComma.k1 is "v1")
 
 ok {a: (num) -> num is 10 }.a 10
 
-moe = {
+let moe = {
   name:  'Moe'
   greet: (salutation) ->
     salutation + " " + @name
@@ -23,7 +23,7 @@ moe.hello = ->
   this['greet'] "Hello"
 ok moe.hello() is 'Hello Moe'
 
-obj = {
+let obj = {
   is:     -> yes,
   'not':  -> no,
 }
@@ -127,12 +127,12 @@ obj =
   two: 2
   object: -> {@one, @two}
   list:   -> [@one, @two]
-result = obj.object()
+let result = obj.object()
 eq result.one, 1
 eq result.two, 2
 eq result.two, obj.list()[1]
 
-third = (a, b, c) -> c
+let third = (a, b, c) -> c
 obj =
   one: 'one'
   two: third 'one', 'two', 'three'

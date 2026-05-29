@@ -162,7 +162,7 @@ exports.Base = class Base
         fragments.push commentFragment
 
     for comment in node.comments when comment not in @compiledComments
-      @compiledComments.push comment # Don’t output this comment twice.
+      @compiledComments.push comment # Don't output this comment twice.
       # For block/here comments, denoted by `###`, that are inline comments
       # like `1 + ### comment ### 2`, create fragments and insert them into
       # the fragments array.
@@ -703,7 +703,7 @@ exports.Block = class Block extends Base
       assigns = scope.hasAssignments
       if declars or assigns
         fragments.push @makeCode '\n' if i
-        fragments.push @makeCode "#{@tab}var "
+        fragments.push @makeCode "#{@tab}#{if scope.shared then 'var' else 'let'} "
         if declars
           declaredVariables = scope.declaredVariables()
           for declaredVariable, declaredVariablesIndex in declaredVariables
@@ -1960,6 +1960,29 @@ exports.JSXElement = class JSXElement extends Base
 
 #### Call
 
+# Mutating array methods that must be rewritten for immutability.
+# Each entry is a function (baseStr, compiledArgs) -> rewrittenJSString
+MUTATING_ARRAY_REWRITES =
+  push:       (b, args) -> "#{b} = Object.freeze([...#{b}, #{args.join ', '}])"
+  pop:        (b, _)    -> "#{b} = Object.freeze(#{b}.slice(0, -1))"
+  shift:      (b, _)    -> "#{b} = Object.freeze(#{b}.slice(1))"
+  unshift:    (b, args) -> "#{b} = Object.freeze([#{args.join ', '}, ...#{b}])"
+  reverse:    (b, _)    -> "#{b} = Object.freeze(#{b}.toReversed())"
+  sort: (b, args) ->
+    if args.length then "#{b} = Object.freeze(#{b}.toSorted(#{args[0]}))"
+    else                "#{b} = Object.freeze(#{b}.toSorted())"
+  splice: (b, args) ->
+    [i, n, items...] = args
+    ins = if items.length then ", #{items.join ', '}" else ''
+    "#{b} = Object.freeze([...#{b}.slice(0, #{i})#{ins}, ...#{b}.slice(#{i} + #{n})])"
+  fill: (b, args) ->
+    "#{b} = Object.freeze(__toFilled__(#{b}, #{args.join ', '}))"
+  copyWithin: (b, args) ->
+    [tgt, src, end_...] = args
+    endStr = if end_.length then ", #{end_[0]}" else ''
+    "#{b} = Object.freeze([...#{b}.slice(0, #{tgt}), ...#{b}.slice(#{src}#{endStr}), " +
+    "...#{b}.slice(#{tgt} + (#{if end_.length then end_[0] else "#{b}.length"} - #{src}))])"
+
 # Node for a function invocation.
 exports.Call = class Call extends Base
   constructor: (@variable, @args = [], @soak, @token) ->
@@ -2060,6 +2083,37 @@ exports.Call = class Call extends Base
   compileNode: (o) ->
     @checkForNewSuper()
     @variable?.front = @front
+
+    # ── Immutability: intercept mutating array method calls ───────────────────
+    if not @isNew and @variable instanceof Value and
+       @variable.properties?.length > 0 and not @soak
+      lastProp = @variable.properties[@variable.properties.length - 1]
+      if lastProp instanceof Access
+        methodName = lastProp.name?.value
+        rewriter    = MUTATING_ARRAY_REWRITES[methodName]
+        if rewriter and Object::hasOwnProperty.call MUTATING_ARRAY_REWRITES, methodName
+          receiverProps = @variable.properties[...-1]
+          if receiverProps.length is 0 and @variable.base instanceof IdentifierLiteral
+            baseName = @variable.base.value
+            if o.scope.check baseName
+              if o.scope.isConstVar baseName
+                # const variable: mutation is always forbidden
+                @variable.error "'#{baseName}.#{methodName}()' is a mutating operation. " +
+                                "'#{baseName}' is const — declare it with 'let' to enable " +
+                                "the automatic immutable rewrite."
+              if o.scope.isLetVar baseName
+                # let variable: apply immutable method rewrite
+                if methodName is 'fill'
+                  o.scope.root.assign '__toFilled__',
+                    '(arr, value, start = 0, end = arr.length) => ' +
+                    'Object.freeze(arr.map((v, i) => (i >= start && i < end) ? value : v))'
+                receiverNode = new Value @variable.base, receiverProps
+                baseStr      = fragmentsToText receiverNode.compileToFragments(o, LEVEL_ACCESS)
+                compiledArgs = (fragmentsToText arg.compileToFragments(o, LEVEL_LIST) for arg in @args)
+                return [@makeCode rewriter(baseStr, compiledArgs)]
+              # else: param/var type → allow normal method call (fall through)
+    # ─────────────────────────────────────────────────────────────────────────
+
     compiledArgs = []
     # If variable is `Accessor` fragments are cached and used later
     # in `Value::compileNode` to ensure correct order of the compilation,
@@ -2089,6 +2143,21 @@ exports.Call = class Call extends Base
     if @isNew
       @variable.error "Unsupported reference to 'super'" if @variable instanceof Super
 
+  # Check for mutating method calls on const variables (shared between compileNode and astNode)
+  checkConstMethodMutation: (o) ->
+    if not @isNew and @variable instanceof Value and
+       @variable.properties?.length > 0 and not @soak
+      lastProp = @variable.properties[@variable.properties.length - 1]
+      if lastProp instanceof Access
+        methodName = lastProp.name?.value
+        if methodName and Object::hasOwnProperty.call(MUTATING_ARRAY_REWRITES, methodName)
+          if @variable.properties.length is 1 and @variable.base instanceof IdentifierLiteral
+            baseName = @variable.base.value
+            if o.scope.check(baseName) and o.scope.isConstVar(baseName)
+              @variable.error "'#{baseName}.#{methodName}()' is a mutating operation. " +
+                              "'#{baseName}' is const — declare it with 'let' to enable " +
+                              "the automatic immutable rewrite."
+
   containsSoak: ->
     return yes if @soak
     return yes if @variable?.containsSoak?()
@@ -2098,6 +2167,7 @@ exports.Call = class Call extends Base
     if @soak and @variable instanceof Super and o.scope.namedMethod()?.ctor
       @variable.error "Unsupported reference to 'super'"
     @checkForNewSuper()
+    @checkConstMethodMutation o
     super o
 
   astType: ->
@@ -2338,7 +2408,7 @@ exports.Range = class Range extends Base
     namedIndex = idxName and idxName isnt idx
     varPart  =
       if known and not namedIndex
-        "var #{idx} = #{@fromC}"
+        "let #{idx} = #{@fromC}"
       else
         "#{idx} = #{@fromC}"
     varPart += ", #{@toC}" if @toC isnt @toVar
@@ -2397,14 +2467,14 @@ exports.Range = class Range extends Base
     idt    = @tab + TAB
     i      = o.scope.freeVariable 'i', single: true, reserve: no
     result = o.scope.freeVariable 'results', reserve: no
-    pre    = "\n#{idt}var #{result} = [];"
+    pre    = "\n#{idt}let #{result} = [];"
     if known
       o.index = i
       body    = fragmentsToText @compileNode o
     else
       vars    = "#{i} = #{@fromC}" + if @toC isnt @toVar then ", #{@toC}" else ''
       cond    = "#{@fromVar} <= #{@toVar}"
-      body    = "var #{vars}; #{cond} ? #{i} <#{@equals} #{@toVar} : #{i} >#{@equals} #{@toVar}; #{cond} ? #{i}++ : #{i}--"
+      body    = "let #{vars}; #{cond} ? #{i} <#{@equals} #{@toVar} : #{i} >#{@equals} #{@toVar}; #{cond} ? #{i}++ : #{i}--"
     post   = "{ #{result}.push(#{i}); }\n#{idt}return #{result};\n#{o.indent}"
     hasArgs = (node) -> node?.contains isLiteralArguments
     args   = ', arguments' if hasArgs(@from) or hasArgs(@to)
@@ -2560,6 +2630,10 @@ exports.Obj = class Obj extends Base
       if join then answer.push @makeCode join
     answer.push @makeCode if isCompact then '' else "\n#{@tab}"
     answer = @wrapInBraces answer
+    # Wrap with Object.freeze() for immutability — only for variable declarations (const/let)
+    if not @lhs and not @generated and o.freezeLiteral
+      answer.unshift @makeCode 'Object.freeze('
+      answer.push    @makeCode ')'
     if @front then @wrapInParentheses answer else answer
 
   getAndCheckSplatProps: ->
@@ -2699,7 +2773,13 @@ exports.Arr = class Arr extends Base
     not @isAssignable()
 
   compileNode: (o) ->
-    return [@makeCode '[]'] unless @objects.length
+    unless @objects.length
+      if @lhs
+        return [@makeCode '[]']
+      else if o.freezeLiteral
+        return [@makeCode 'Object.freeze([])']
+      else
+        return [@makeCode '[]']
     o.indent += TAB
     fragmentIsElision = ([ fragment ]) ->
       fragment.type is 'Elision' and fragment.code.trim() is ','
@@ -2750,6 +2830,10 @@ exports.Arr = class Arr extends Base
         fragment.code = "#{fragment.code} "
       answer.unshift @makeCode '['
       answer.push @makeCode ']'
+    # Wrap with Object.freeze() for immutability — only for variable declarations (const/let)
+    if not @lhs and o.freezeLiteral
+      answer.unshift @makeCode 'Object.freeze('
+      answer.push    @makeCode ')'
     answer
 
   assigns: (name) ->
@@ -3305,7 +3389,10 @@ exports.ExportDeclaration = class ExportDeclaration extends ModuleDeclaration
 
     if @ not instanceof ExportDefaultDeclaration and
        (@clause instanceof Assign or @clause instanceof Class)
-      code.push @makeCode 'var '
+      if @clause instanceof Assign and @clause.letDeclaration
+        code.push @makeCode 'let '
+      else
+        code.push @makeCode 'const '
       @clause.moduleDeclaration = 'export'
 
     if @clause.body? and @clause.body instanceof Block
@@ -3481,7 +3568,7 @@ exports.DynamicImportCall = class DynamicImportCall extends Call
 exports.Assign = class Assign extends Base
   constructor: (@variable, @value, @context, options = {}) ->
     super()
-    {@param, @subpattern, @operatorToken, @moduleDeclaration, @originalContext = @context} = options
+    {@param, @subpattern, @operatorToken, @moduleDeclaration, @letDeclaration, @originalContext = @context} = options
     @propagateLhs()
 
   children: ['variable', 'value']
@@ -3539,8 +3626,27 @@ exports.Assign = class Assign extends Base
           else
             'param'
       else
-        alreadyDeclared = o.scope.find name.value
-        name.isDeclaration ?= not alreadyDeclared
+        # Only use const/let at statement level (LEVEL_TOP = 0) AND in the root scope.
+        # Inside functions, use 'var' so variables are hoisted and mutable by default.
+        # The 'const' type is only for top-level program assignments.
+        # For nested expressions (e.g. `exports.fn = fn = ->`), we also fall back
+        # to 'var' (level check) so the variable is hoisted, keeping valid JS output.
+        # Destructuring patterns use 'var' to allow the same variable name in multiple positions.
+        atTopLevel = o.level is LEVEL_TOP and o.scope is o.scope.root
+        isDestructuring = @variable.isArray?() or @variable.isObject?()
+        declarationType = if @letDeclaration then 'let' else if atTopLevel and not isDestructuring then 'const' else 'var'
+        existingType    = o.scope.typeOwn name.value
+        if existingType and existingType in ['const', 'let', 'var']
+          # Variable already declared in this scope
+          if existingType is 'const' and atTopLevel
+            name.error "Cannot reassign const '#{name.value}'. " +
+                       "Declare it mutable with: let #{name.value} = ..."
+          # 'let' or 'var' → valid reassignment, not a new declaration
+          # Use ?= so a prior true (from an outer eachName visit on the same node) is preserved.
+          name.isDeclaration ?= no
+        else
+          alreadyDeclared = o.scope.find name.value, declarationType
+          name.isDeclaration ?= not alreadyDeclared
         # If this assignment identifier has one or more herecomments
         # attached, output them as part of the declarations line (unless
         # other herecomments are already staged there) for compatibility
@@ -3579,6 +3685,63 @@ exports.Assign = class Assign extends Base
       return @compileSpecialMath  o if @context in ['//=', '%%=']
 
     @addScopeVariables o
+
+    # ── Immutability: detect property/index mutations ─────────────────────────
+    # Skip internally-generated subpattern assigns (from compileDestructuring).
+    if isValue and @variable.properties?.length > 0 and not @context and not @param and not @subpattern
+      lastProp   = @variable.properties[@variable.properties.length - 1]
+      isIdxMut   = lastProp instanceof Index
+      isPropMut  = lastProp instanceof Access
+      if isIdxMut or isPropMut
+        baseNode = @variable.base
+        if baseNode instanceof IdentifierLiteral
+          baseName = baseNode.value
+          if o.scope.check baseName
+            if o.scope.isConstVar baseName
+              # const variable: mutation is always forbidden
+              @variable.error "Cannot mutate '#{baseName}': it is const. " +
+                              "Declare it mutable with: let #{baseName} = ..."
+            if o.scope.isLetVar baseName
+              # let variable: apply copy-on-write rewrite
+              # Rewrite index mutation: arr[i] = x → arr = Object.freeze([...arr.slice(0,i), x, ...arr.slice(i+1)])
+              # For non-numeric (string/identifier) indices, treat as computed object key instead.
+              if isIdxMut
+                idx  = lastProp.index.compileToFragments(o, LEVEL_LIST)
+                base = baseNode.compileToFragments o, LEVEL_LIST
+                val  = @value.compileToFragments o, LEVEL_LIST
+                idxS  = fragmentsToText idx
+                baseS = fragmentsToText base
+                valS  = fragmentsToText val
+                idxNum = parseInt idxS.trim(), 10
+                isNumericIdx = not isNaN(idxNum) and "#{idxNum}" is idxS.trim()
+                if isNumericIdx
+                  # Numeric index → array spread rewrite with static arithmetic
+                  nextIdxS = "#{idxNum + 1}"
+                  return [@makeCode(
+                    "#{baseS} = Object.freeze([...#{baseS}.slice(0, #{idxS}), #{valS}, ...#{baseS}.slice(#{nextIdxS})])"
+                  )]
+                else
+                  # Non-numeric → treat as computed object key rewrite
+                  return [@makeCode(
+                    "#{baseS} = Object.freeze({...#{baseS}, [#{idxS}]: #{valS}})"
+                  )]
+              # Rewrite prop mutation: obj.prop = x → obj = Object.freeze({...obj, prop: x})
+              if isPropMut
+                base  = baseNode.compileToFragments o, LEVEL_LIST
+                val   = @value.compileToFragments o, LEVEL_LIST
+                baseS = fragmentsToText base
+                valS  = fragmentsToText val
+                isDyn = lastProp instanceof Index
+                prop  = if isDyn
+                  "[#{fragmentsToText lastProp.index.compileToFragments(o, LEVEL_LIST)}]"
+                else
+                  lastProp.name.value
+                return [@makeCode(
+                  "#{baseS} = Object.freeze({...#{baseS}, #{prop}: #{valS}})"
+                )]
+            # else: param/var type → allow normal mutation (fall through to regular compilation)
+    # ─────────────────────────────────────────────────────────────────────────
+
     if @value instanceof Code
       if @value.isStatic
         @value.name = @variable.properties[0]
@@ -3586,7 +3749,17 @@ exports.Assign = class Assign extends Base
         [properties..., prototype, name] = @variable.properties
         @value.name = name if prototype.name?.value is 'prototype'
 
-    val = @value.compileToFragments o, LEVEL_LIST
+    # Pass freezeLiteral flag to value compilation so Arr/Obj know whether to
+    # wrap with Object.freeze.  Freeze the RHS when:
+    #   • explicit `let` declaration anywhere, OR
+    #   • root-scope statement-level assignment (implicit const)
+    # Object property key-value pairs (@context is 'object') are NEVER frozen —
+    # they are compiled internally by Obj, not as variable declarations.
+    # Other contexts (function args, JSX attrs, return values) are NOT frozen.
+    shouldFreezeValue = not @context and
+                        (@letDeclaration or (o.scope is o.scope.root and o.level is LEVEL_TOP))
+    valueO = if shouldFreezeValue then Object.assign({}, o, {freezeLiteral: yes}) else o
+    val = @value.compileToFragments valueO, LEVEL_LIST
     compiledName = @variable.compileToFragments o, LEVEL_LIST
 
     if @context is 'object'
@@ -3596,10 +3769,24 @@ exports.Assign = class Assign extends Base
       return compiledName.concat @makeCode(': '), val
 
     answer = compiledName.concat @makeCode(" #{ @context or '=' } "), val
+
+    # ── Immutability: inline const/let at first declaration ─────────────────────
+    # Inline `let` anywhere for explicit let-declarations.
+    # Inline `const` only at the root (program) scope — inside functions,
+    # variables use hoisted `let` declarations from Block.compileRoot instead.
+    if not @context and not @param and not @moduleDeclaration and o.level is LEVEL_TOP
+      varBase = @variable.unwrapAll()
+      if varBase instanceof IdentifierLiteral and varBase.isDeclaration
+        if @letDeclaration
+          answer.unshift @makeCode 'let '
+        else if o.scope is o.scope.root
+          answer.unshift @makeCode 'const '
+    # ─────────────────────────────────────────────────────────────────────────
+
     # Per https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Destructuring_assignment#Assignment_without_declaration,
     # if we’re destructuring without declaring, the destructuring assignment must be wrapped in parentheses.
-    # The assignment is wrapped in parentheses if 'o.level' has lower precedence than LEVEL_LIST (3)
-    # (i.e. LEVEL_COND (4), LEVEL_OP (5) or LEVEL_ACCESS (6)), or if we're destructuring object, e.g. {a,b} = obj.
+    # The assignment is wrapped in parentheses if ‘o.level’ has lower precedence than LEVEL_LIST (3)
+    # (i.e. LEVEL_COND (4), LEVEL_OP (5) or LEVEL_ACCESS (6)), or if we’re destructuring object, e.g. {a,b} = obj.
     if o.level > LEVEL_LIST or isValue and @variable.base instanceof Obj and not @nestedLhs and not (@param is yes)
       @wrapInParentheses answer
     else
@@ -3857,6 +4044,19 @@ exports.Assign = class Assign extends Base
 
   isStatementAst: NO
 
+  # Check for const mutation (shared between compileNode and astNode)
+  checkConstMutation: (o) ->
+    isValue = @variable instanceof Value
+    if isValue and @variable.properties?.length > 0 and not @context and not @param
+      lastProp = @variable.properties[@variable.properties.length - 1]
+      if lastProp instanceof Index or lastProp instanceof Access
+        baseNode = @variable.base
+        if baseNode instanceof IdentifierLiteral
+          baseName = baseNode.value
+          if o.scope.check(baseName) and o.scope.isConstVar(baseName)
+            @variable.error "Cannot mutate '#{baseName}': it is const. " +
+                            "Declare it mutable with: let #{baseName} = ..."
+
   astNode: (o) ->
     @disallowLoneExpansion()
     @getAndCheckSplatsAndExpansions()
@@ -3865,6 +4065,7 @@ exports.Assign = class Assign extends Base
       if variable instanceof IdentifierLiteral and not o.scope.check variable.value
         @throwUnassignableConditionalError variable.value
     @addScopeVariables o, allowAssignmentToExpansion: yes, allowAssignmentToNontrailingSplat: yes, allowAssignmentToEmptyArray: yes, allowAssignmentToComplexSplat: yes
+    @checkConstMutation o
     super o
 
   astType: ->
@@ -4033,7 +4234,12 @@ exports.Code = class Code extends Base
           if param.name instanceof Arr or param.name instanceof Obj
             # This parameter is destructured.
             param.name.lhs = yes
-            unless param.shouldCache()
+            if param.shouldCache()
+              # The synthetic reference (e.g. `arg`) was registered as ‘var’ by
+              # freeVariable; re-register it as ‘param’ so it is not hoisted in
+              # the `let` block.
+              o.scope.parameter fragmentsToText ref.compileToFragmentsWithoutComments o
+            else
               param.name.eachName (prop) ->
                 o.scope.parameter prop.value
           else
@@ -4142,6 +4348,7 @@ exports.Code = class Code extends Base
     o.indent        += TAB
     delete o.bare
     delete o.isExistentialEquals
+    delete o.freezeLiteral
 
   checkForDuplicateParams: ->
     paramNames = []
@@ -4837,8 +5044,18 @@ exports.Op = class Op extends Base
     super idt, @constructor.name + ' ' + @operator
 
   checkDeleteOperand: (o) ->
-    if @operator is 'delete' and o.scope.check(@first.unwrapAll().value)
-      @error 'delete operand may not be argument or var'
+    if @operator is 'delete'
+      target = @first
+      # Forbid delete on user-declared const/let variables.
+      # Allow delete on:
+      #   - variables not in user scope (e.g. `require.cache`)
+      #   - var-typed variables inside functions (internal, mutable by design)
+      if target instanceof Value and target.base instanceof IdentifierLiteral
+        baseName = target.base.value
+        if o.scope?.check(baseName)
+          if o.scope.isConstVar(baseName) or o.scope.isLetVar(baseName)
+            @error "The 'delete' operator is forbidden in immutable mode. " +
+                   "To remove a property, use destructuring: const {prop, ...rest} = obj"
 
   astNode: (o) ->
     @checkContinuation o if @isYield()
@@ -5396,8 +5613,8 @@ exports.For = class For extends While
     scope       = o.scope
     name        = @name  and (@name.compile o, LEVEL_LIST) if not @pattern
     index       = @index and (@index.compile o, LEVEL_LIST)
-    scope.find(name)  if name and not @pattern
-    scope.find(index) if index and @index not instanceof Value
+    scope.find(name, 'var')  if name and not @pattern
+    scope.find(index, 'var') if index and @index not instanceof Value
     rvar        = scope.freeVariable 'results' if @returns
     if @from
       ivar = scope.freeVariable 'x', single: true if @pattern

@@ -220,13 +220,11 @@ test "a variable can be assigned after an import", ->
     import { foo } from 'lib'
     bar = 5""",
   """
-    var bar;
-
     import {
       foo
     } from 'lib';
 
-    bar = 5;"""
+    const bar = 5;"""
 
 test "variables can be assigned before and after an import", ->
   eqJS """
@@ -234,15 +232,13 @@ test "variables can be assigned before and after an import", ->
     import { bar } from 'lib'
     baz = 7""",
   """
-    var baz, foo;
-
-    foo = 5;
+    const foo = 5;
 
     import {
       bar
     } from 'lib';
 
-    baz = 7;"""
+    const baz = 7;"""
 
 # Export statements
 
@@ -357,25 +353,23 @@ test "export default multiline implicit object with internal braces", ->
 test "export default assignment expression", ->
   eqJS "export default foo = 'bar'",
   """
-    var foo;
-
-    export default foo = 'bar';"""
+    export default const foo = 'bar';"""
 
 test "export assignment expression", ->
   eqJS "export foo = 'bar'",
-  "export var foo = 'bar';"
+  "export const foo = 'bar';"
 
 test "export multiline assignment expression", ->
   eqJS """
     export foo =
     'bar'""",
-    "export var foo = 'bar';"
+    "export const foo = 'bar';"
 
 test "export multiline indented assignment expression", ->
   eqJS """
     export foo =
       'bar'""",
-      "export var foo = 'bar';"
+      "export const foo = 'bar';"
 
 test "export default function", ->
   eqJS "export default ->",
@@ -395,7 +389,7 @@ test "export assignment function", ->
     export foo = (bar) ->
       console.log bar""",
     """
-    export var foo = function(bar) {
+    export const foo = function(bar) {
       return console.log(bar);
     };"""
 
@@ -405,8 +399,8 @@ test "export assignment function which contains assignments in its body", ->
       baz = '!'
       console.log bar + baz""",
     """
-    export var foo = function(bar) {
-      var baz;
+    export const foo = function(bar) {
+      let baz;
       baz = '!';
       return console.log(bar + baz);
     };"""
@@ -417,9 +411,7 @@ test "export default predefined function", ->
       console.log bar
     export default foo""",
   """
-    var foo;
-
-    foo = function(bar) {
+    const foo = function(bar) {
       return console.log(bar);
     };
 
@@ -431,9 +423,7 @@ test "export default class", ->
       baz: ->
         console.log 'hello, world!'""",
       """
-    var foo;
-
-    export default foo = class foo extends bar {
+    export default const foo = class foo extends bar {
       baz() {
         return console.log('hello, world!');
       }
@@ -446,7 +436,7 @@ test "export class", ->
       baz: ->
         console.log 'hello, world!'""",
       """
-    export var foo = class foo {
+    export const foo = class foo {
       baz() {
         return console.log('hello, world!');
       }
@@ -459,7 +449,7 @@ test "export class that extends", ->
       baz: ->
         console.log 'hello, world!'""",
       """
-    export var foo = class foo extends bar {
+    export const foo = class foo extends bar {
       baz() {
         return console.log('hello, world!');
       }
@@ -472,9 +462,7 @@ test "export default class that extends", ->
       baz: ->
         console.log 'hello, world!'""",
       """
-    var foo;
-
-    export default foo = class foo extends bar {
+    export default const foo = class foo extends bar {
       baz() {
         return console.log('hello, world!');
       }
@@ -553,13 +541,11 @@ test "a variable named `from` can be assigned after an import", ->
     import { foo } from 'lib'
     from = 5""",
   """
-    var from;
-
     import {
       foo
     } from 'lib';
 
-    from = 5;"""
+    const from = 5;"""
 
 test "`from` can be assigned after a multiline import", ->
   eqJS """
@@ -568,13 +554,11 @@ test "`from` can be assigned after a multiline import", ->
     } from 'lib'
     from = 5""",
   """
-    var from;
-
     import {
       foo
     } from 'lib';
 
-    from = 5;"""
+    const from = 5;"""
 
 test "`from` can be imported as a member name", ->
   eqJS "import { from } from 'lib'",
@@ -633,14 +617,12 @@ test "CoffeeScript keywords can be used as imported names in import lists", ->
 test "`*` can be used in an expression on the same line as an export keyword", ->
   eqJS "export foo = (x) -> x * x",
   """
-    export var foo = function(x) {
+    export const foo = function(x) {
       return x * x;
     };"""
   eqJS "export default foo = (x) -> x * x",
   """
-    var foo;
-
-    export default foo = function(x) {
+    export default const foo = function(x) {
       return x * x;
     };"""
 
@@ -653,7 +635,7 @@ test "`*` and `from` can be used in an export default expression", ->
       """
     export default foo.extend({
       bar: function() {
-        var from;
+        let from;
         from = 5;
         return from = from * 3;
       }
@@ -736,9 +718,7 @@ test "#4394: export shouldn't prevent variable declarations", ->
     export { x }
   """,
   """
-    var x;
-
-    x = 1;
+    const x = 1;
 
     export {
       x
@@ -934,10 +914,8 @@ test "#4834: dynamic import", ->
       bar = await import('bar')
   """,
   """
-    var foo;
-
-    foo = async function() {
-      var bar;
+    const foo = async function() {
+      let bar;
       return bar = (await import('bar'));
     };
   """
@@ -954,9 +932,7 @@ test "#5317: Support import.meta", ->
     foo = import.meta
   """,
   """
-    var foo;
-
-    foo = import.meta;
+    const foo = import.meta;
   """
 
   eqJS """
@@ -964,9 +940,7 @@ test "#5317: Support import.meta", ->
         .meta
   """,
   """
-    var foo;
-
-    foo = import.meta;
+    const foo = import.meta;
   """
 
   eqJS """
@@ -974,18 +948,14 @@ test "#5317: Support import.meta", ->
         meta
   """,
   """
-    var foo;
-
-    foo = import.meta;
+    const foo = import.meta;
   """
 
   eqJS """
     foo = import.meta.bar
   """,
   """
-    var foo;
-
-    foo = import.meta.bar;
+    const foo = import.meta.bar;
   """
 
   eqJS """
@@ -994,9 +964,7 @@ test "#5317: Support import.meta", ->
         .bar
   """,
   """
-    var foo;
-
-    foo = import.meta.bar;
+    const foo = import.meta.bar;
   """
 
   eqJS """

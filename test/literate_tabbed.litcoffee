@@ -2,7 +2,7 @@
 
 comment comment
 
-	testsCount = 0 # Track the number of tests run in this file, to make sure they all run
+	let testsCount = 0 # Track the number of tests run in this file, to make sure they all run
 
 	test "basic literate CoffeeScript parsing", ->
 		ok yes
@@ -59,7 +59,7 @@ and unordered lists, are fine:
 ---
 
 	# keep track of whether code blocks are executed or not
-	executed = false
+	let executed = false
 
 <p>
 

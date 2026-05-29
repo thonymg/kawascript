@@ -260,7 +260,7 @@ test "#1273, escaping quotes at the end of heredocs.", ->
   eq """\\""", '\\'
   eq """\\\"""", '\\\"'
 
-a = """
+let a = """
     basic heredoc
     on two lines
     """

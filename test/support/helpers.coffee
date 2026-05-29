@@ -32,10 +32,13 @@ exports.arrayEq = (a, b, msg) ->
   ok arrayEgal(a, b), msg or
   "Expected #{reset}#{a}#{red} to deep equal #{reset}#{b}#{red}"
 
+normalizeJS = (s) ->
+  s.replace(/^\s+|\s+$/g, '').replace(/\n{2,}/g, '\n')
+
 exports.eqJS = (input, expectedOutput, msg) ->
-  actualOutput = CoffeeScript.compile input, bare: yes
-  .replace /^\s+|\s+$/g, '' # Trim leading/trailing whitespace.
-  ok egal(expectedOutput, actualOutput), msg or diffOutput expectedOutput, actualOutput
+  actualOutput   = normalizeJS CoffeeScript.compile input, bare: yes
+  normalExpected = normalizeJS expectedOutput
+  ok egal(normalExpected, actualOutput), msg or diffOutput normalExpected, actualOutput
 
 exports.isWindows = -> process.platform is 'win32'
 

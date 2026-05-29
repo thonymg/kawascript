@@ -3,8 +3,8 @@
 # We add support for loading remote Coffee scripts via **XHR**, and
 # `text/coffeescript` script tags, source maps via data-URLs, and so on.
 
-CoffeeScript = require './coffeescript'
-{ compile } = CoffeeScript
+let CoffeeScript = require './coffeescript'
+let compile = CoffeeScript.compile
 
 # Use `window.eval` to evaluate code, rather than just `eval`, to run the
 # script in a clean global scope rather than inheriting the scope of the

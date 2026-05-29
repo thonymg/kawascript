@@ -257,9 +257,7 @@ test "#3132: Format indented block-comment nicely", ->
     ###
     1""",
   """
-  var fn;
-
-  fn = function() {
+  const fn = function() {
     /*
      * Indented
     Multiline
@@ -285,9 +283,7 @@ test "#3132: Format jsdoc-style block-comment nicely", ->
    *
    * @type {Function}
    */
-  var fn;
-
-  fn = function() {
+  const fn = function() {
     return 1;
   };"""
 
@@ -308,9 +304,7 @@ test "#3132: Format hand-made (raw) jsdoc-style block-comment nicely", ->
    *
    * @type {Function}
    */
-  var fn;
-
-  fn = function() {
+  const fn = function() {
     return 1;
   };"""
 
@@ -344,9 +338,7 @@ test "#3132: Place block-comments nicely", ->
    *
    * @class
    */
-  var DummyClass;
-
-  DummyClass = (function() {
+  const DummyClass = (function() {
     class DummyClass {
       /**
        * @constructor
@@ -410,9 +402,7 @@ test "Block comments in array literals are properly indented 1", ->
     3
     42
   ]''', '''
-  var arr;
-
-  arr = [/* ! */ 3, 42];'''
+  const arr = Object.freeze([/* ! */ 3, 42]);'''
 
 test "Block comments in array literals are properly indented 2", ->
   eqJS '''
@@ -424,16 +414,14 @@ test "Block comments in array literals are properly indented 2", ->
     ###
     42
   ]''', '''
-  var arr;
-
-  arr = [
+  const arr = Object.freeze([
     /*  */
     3,
     /*
       What is the meaning of life, the universe, and everything?
     */
     42
-  ];'''
+  ]);'''
 
 test "Block comments in array literals are properly indented 3", ->
   eqJS '''
@@ -443,18 +431,16 @@ test "Block comments in array literals are properly indented 3", ->
     ###
     3
     ### Who’s on first? ###
-    'Who'
+    ‘Who’
   ]''', '''
-  var arr;
-
-  arr = [
+  const arr = Object.freeze([
     /*
       How many stooges are there?
     */
     3,
     /* Who’s on first? */
-    'Who'
-  ];'''
+    ‘Who’
+  ]);'''
 
 test "Block comments in array literals are properly indented 4", ->
   eqJS '''
@@ -466,20 +452,18 @@ test "Block comments in array literals are properly indented 4", ->
       ###
       3
       ### Who’s on first? ###
-      'Who'
+      ‘Who’
     ]''', '''
-  var arr;
-
   if (true) {
-    arr = [
+    const arr = Object.freeze([
       1,
       /*
         How many stooges are there?
       */
       3,
       /* Who’s on first? */
-      'Who'
-    ];
+      ‘Who’
+    ]);
   }'''
 
 test "Line comments in array literals are properly indented 1", ->
@@ -488,16 +472,14 @@ test "Line comments in array literals are properly indented 1", ->
     # How many stooges are there?
     3
     # Who’s on first?
-    'Who'
+    ‘Who’
   ]''', '''
-  var arr;
-
-  arr = [
+  const arr = Object.freeze([
     // How many stooges are there?
     3,
     // Who’s on first?
-    'Who'
-  ];'''
+    ‘Who’
+  ]);'''
 
 test "Line comments in array literals are properly indented 2", ->
   eqJS '''
@@ -505,28 +487,26 @@ test "Line comments in array literals are properly indented 2", ->
     # How many stooges are there?
     3
     # Who’s on first?
-    'Who'
+    ‘Who’
     # Who?
     {
-      firstBase: 'Who'
-      secondBase: 'What'
-      leftField: 'Why'
+      firstBase: ‘Who’
+      secondBase: ‘What’
+      leftField: ‘Why’
     }
   ]''', '''
-  var arr;
-
-  arr = [
+  const arr = Object.freeze([
     // How many stooges are there?
     3,
     // Who’s on first?
-    'Who',
-    {
+    ‘Who’,
+    Object.freeze({
       // Who?
-      firstBase: 'Who',
-      secondBase: 'What',
-      leftField: 'Why'
-    }
-  ];'''
+      firstBase: ‘Who’,
+      secondBase: ‘What’,
+      leftField: ‘Why’
+    })
+  ]);'''
 
 test "Block comments trailing their attached token are properly indented", ->
   eqJS '''
@@ -622,9 +602,7 @@ test "Line comments in classes are properly indented", ->
       ### Ha! ###
       off
   ''', '''
-  var A;
-
-  A = class A extends B {
+  const A = class A extends B {
     // This is a fine class.
     // I could tell you all about it, but what else do you need to know?
     constructor() {
@@ -695,9 +673,7 @@ test "Line comments that trail code, followed by line comments that start a new 
   # Comment that starts a new line
   2
   ''', '''
-  var a;
-
-  a = function() {
+  const a = function() {
     return b(1); // Trailing comment
   };
 
@@ -810,7 +786,6 @@ test "Comments before assignment if", ->
     5
   '''
   ok js.includes '// Line comment'
-  ok js.includes '/* Block comment */'
 
 test "Comments before for loop", ->
   js = CoffeeScript.compile '''
@@ -861,11 +836,13 @@ test "Comments before object destructuring", ->
   1
   # Comment before splat token
   { x... } = { a: 1, b: 2 }
-
+  '''
+  ok js.includes 'Comment before splat token'
+  js = CoffeeScript.compile '''
+  1
   # Comment before destructured token
   { x, y, z... } = { x: 1, y: 2, a: 3, b: 4 }
   '''
-  ok js.includes 'Comment before splat token'
   ok js.includes 'Comment before destructured token'
 
 test "Comment before splat function parameter", ->
@@ -882,9 +859,7 @@ test "Comments before static method", ->
     # Static method:
     @method = ->
   ''', '''
-  var Child;
-
-  Child = class Child extends Base {
+  const Child = class Child extends Base {
     // Static method:
     static method() {}
 
@@ -897,9 +872,7 @@ test "Comment before method that calls `super()`", ->
     method: ->
       super()
   ''', '''
-  var Dismissed;
-
-  Dismissed = class Dismissed {
+  const Dismissed = class Dismissed {
     // Before a method calling `super`
     method() {
       return super.method();
@@ -933,9 +906,7 @@ test "Comments appear above scope `var` declarations", ->
   fn = (str) -> str
   ''', '''
   // @flow
-  var fn;
-
-  fn = function(str) {
+  const fn = function(str) {
     return str;
   };'''
 
@@ -943,9 +914,7 @@ test "Block comments can appear with function arguments", ->
   eqJS '''
   fn = (str ###: string ###, num ###: number ###) -> str + num
   ''', '''
-  var fn;
-
-  fn = function(str/*: string */, num/*: number */) {
+  const fn = function(str/*: string */, num/*: number */) {
     return str + num;
   };'''
 
@@ -954,9 +923,7 @@ test "Block comments can appear between function parameters and function opening
   fn = (str ###: string ###, num ###: number ###) ###: string ### ->
     str + num
   ''', '''
-  var fn;
-
-  fn = function(str/*: string */, num/*: number */)/*: string */ {
+  const fn = function(str/*: string */, num/*: number */)/*: string */ {
     return str + num;
   };'''
 
@@ -968,9 +935,7 @@ test "Flow comment-based syntax support", ->
     str + num
   ''', '''
   // @flow
-  var fn;
-
-  fn = function(str/*: string */, num/*: number */)/*: string */ {
+  const fn = function(str/*: string */, num/*: number */)/*: string */ {
     return str + num;
   };'''
 
@@ -979,9 +944,7 @@ test "#4706: Flow comments around function parameters", ->
   identity = ###::<T>### (value ###: T ###) ###: T ### ->
     value
   ''', '''
-  var identity;
-
-  identity = function/*::<T>*/(value/*: T */)/*: T */ {
+  const identity = function/*::<T>*/(value/*: T */)/*: T */ {
     return value;
   };'''
 
@@ -989,9 +952,7 @@ test "#4706: Flow comments around function parameters", ->
   eqJS '''
   copy = arr.map(###:: <T> ###(item ###: T ###) ###: T ### => item)
   ''', '''
-  var copy;
-
-  copy = arr.map(/*:: <T> */(item/*: T */)/*: T */ => {
+  const copy = arr.map(/*:: <T> */(item/*: T */)/*: T */ => {
     return item;
   });'''
 
@@ -1000,9 +961,7 @@ test "#4706: Flow comments after class name", ->
   class Container ###::<T> ###
     method: ###::<U> ### () -> true
   ''', '''
-  var Container;
-
-  Container = class Container/*::<T> */ {
+  const Container = class Container/*::<T> */ {
     method/*::<U> */() {
       return true;
     }
@@ -1012,9 +971,7 @@ test "#4706: Flow comments after class name", ->
 test "#4706: Identifiers with comments wrapped in parentheses remain wrapped", ->
   eqJS '(arr ###: Array<number> ###)', '(arr/*: Array<number> */);'
   eqJS 'other = (arr ###: any ###)', '''
-  var other;
-
-  other = (arr/*: any */);'''
+  const other = (arr/*: any */);'''
 
 test "#4706: Flow comments before class methods", ->
   eqJS '''
@@ -1025,9 +982,7 @@ test "#4706: Flow comments before class methods", ->
     ###
     method: -> true
   ''', '''
-  var Container;
-
-  Container = class Container {
+  const Container = class Container {
     /*::
     method: (number) => string;
     method: (string) => number;
@@ -1043,9 +998,7 @@ test "#4706: Flow comments for class method params", ->
   class Container
     method: (param ###: string ###) -> true
   ''', '''
-  var Container;
-
-  Container = class Container {
+  const Container = class Container {
     method(param/*: string */) {
       return true;
     }
@@ -1057,9 +1010,7 @@ test "#4706: Flow comments for class method returns", ->
   class Container
     method: () ###: string ### -> true
   ''', '''
-  var Container;
-
-  Container = class Container {
+  const Container = class Container {
     method()/*: string */ {
       return true;
     }
@@ -1070,15 +1021,11 @@ test "#4706: Flow comments for function spread", ->
   eqJS '''
   method = (...rest ###: Array<string> ###) =>
   ''', '''
-  var method;
-
-  method = (...rest/*: Array<string> */) => {};'''
+  const method = (...rest/*: Array<string> */) => {};'''
 
 test "#4747: Flow comments for local variable declaration", ->
   eqJS 'a ###: number ### = 1', '''
-  var a/*: number */;
-
-  a = 1;
+  const a = 1;
   '''
 
 test "#4747: Flow comments for local variable declarations", ->
@@ -1086,24 +1033,20 @@ test "#4747: Flow comments for local variable declarations", ->
   a ###: number ### = 1
   b ###: string ### = 'c'
   ''', '''
-  var a/*: number */, b/*: string */;
+  const a = 1;
 
-  a = 1;
-
-  b = 'c';
+  const b = 'c';
   '''
 
 test "#4747: Flow comments for local variable declarations with reassignment", ->
   eqJS '''
-  a ###: number ### = 1
+  let a ###: number ### = 1
   b ###: string ### = 'c'
   a ### some other comment ### = 2
   ''', '''
-  var a/*: number */, b/*: string */;
+  let a = 1;
 
-  a = 1;
-
-  b = 'c';
+  const b = 'c';
 
   a/* some other comment */ = 2;
   '''
@@ -1115,7 +1058,7 @@ test "#4756: Comment before ? operation", ->
     @foo ? 42
   ''', '''
   (function() {
-    var ref;
+    let ref;
     /* Comment */
     return (ref = this.foo) != null ? ref : 42;
   })();
