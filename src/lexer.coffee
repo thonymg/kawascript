@@ -806,6 +806,7 @@ exports.Lexer = class Lexer
     else if value in UNARY_MATH      then tag = 'UNARY_MATH'
     else if value in SHIFT           then tag = 'SHIFT'
     else if value is '?' and prev?.spaced then tag = 'BIN?'
+    else if value is '|' and @tag() in LINE_BREAK then tag = 'MATCH_PIPE'
     else if prev
       if value is '(' and not prev.spaced and prev[0] in CALLABLE
         prev[0] = 'FUNC_EXIST' if prev[0] is '?'
@@ -1236,7 +1237,7 @@ JS_KEYWORDS = [
 COFFEE_KEYWORDS = [
   'undefined', 'Infinity', 'NaN'
   'then', 'unless', 'until', 'loop', 'of', 'by', 'when'
-  'let'
+  'let', 'match'
 ]
 
 COFFEE_ALIAS_MAP =

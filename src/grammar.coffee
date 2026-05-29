@@ -151,6 +151,7 @@ grammar =
     o 'While'
     o 'For'
     o 'Switch'
+    o 'Match'
     o 'Class'
     o 'Throw'
     o 'Yield'
@@ -867,6 +868,34 @@ grammar =
     o 'LEADING_WHEN SimpleArgs Block TERMINATOR', -> LOC(1, 3) new SwitchWhen $2, $3
   ]
 
+  # Pattern matching expression: `match subject | pattern -> body`
+  Match: [
+    o 'MATCH Expression INDENT MatchArms OUTDENT',         -> new MatchNode $2, $4
+    o 'MATCH ExpressionLine INDENT MatchArms OUTDENT',     -> new MatchNode $2, $4
+  ]
+
+  MatchArms: [
+    o 'MatchArm',                                          -> [$1]
+    o 'MatchArms MatchArm',                                -> $1.concat $2
+  ]
+
+  MatchArm: [
+    o 'MATCH_PIPE MatchPattern -> Block',
+      -> new MatchArm $2, null, $4
+    o 'MATCH_PIPE MatchPattern IF Expression -> Block',
+      -> new MatchArm $2, $4, $6
+    o 'MATCH_PIPE MatchPattern -> Block TERMINATOR',
+      -> LOC(1, 4) new MatchArm $2, null, $4
+    o 'MATCH_PIPE MatchPattern IF Expression -> Block TERMINATOR',
+      -> LOC(1, 6) new MatchArm $2, $4, $6
+  ]
+
+  MatchPattern: [
+    o 'Literal',                                           -> new LiteralPattern $1
+    o 'IDENTIFIER',                                        -> new BindingPattern $1
+    o 'MatchPattern , MatchPattern',                       -> new OrPattern $1, $3
+  ]
+
   # The most basic form of *if* is a condition and an action. The following
   # if-related rules are broken up along these lines in order to avoid
   # ambiguity.
@@ -990,6 +1019,8 @@ operators = [
   ['right',     '=', ':', 'COMPOUND_ASSIGN', 'RETURN', 'THROW', 'EXTENDS']
   ['right',     'FORIN', 'FOROF', 'FORFROM', 'BY', 'WHEN']
   ['right',     'IF', 'ELSE', 'FOR', 'WHILE', 'UNTIL', 'LOOP', 'SUPER', 'CLASS', 'IMPORT', 'EXPORT', 'DYNAMIC_IMPORT']
+  ['right',     'MATCH']
+  ['right',     'MATCH_PIPE']
   ['left',      'POST_IF']
 ]
 

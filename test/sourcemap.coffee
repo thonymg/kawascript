@@ -76,10 +76,10 @@ test "node --enable-source-map built in stack trace mapping", ->
     proc.stderr.on 'data', (str) -> err += str
     proc.on 'close', ->
       try
-        match = err.match /error\.coffee:(\d+):(\d+)/
-        throw new Error err unless match
+        matchResult = err.match /error\.coffee:(\d+):(\d+)/
+        throw new Error err unless matchResult
 
-        [_, line, column] = match
+        [_, line, column] = matchResult
         equal line, 3 # Mapped source line
         equal column, 9 # Mapped source column
 
@@ -100,10 +100,10 @@ if Number(process.versions.node.split('.')[0]) >= 14
       proc.stderr.on 'data', (str) -> err += str
       proc.on 'close', ->
         try
-          match = err.match /error\.coffee:(\d+):(\d+)/
-          throw new Error err unless match
+          matchResult = err.match /error\.coffee:(\d+):(\d+)/
+          throw new Error err unless matchResult
 
-          [_, line, column] = match
+          [_, line, column] = matchResult
           equal line, 3 # Mapped source line
           equal column, 9 # Mapped source column
 
@@ -122,10 +122,10 @@ if Number(process.versions.node.split('.')[0]) >= 14
       proc.stderr.on 'data', (str) -> err += str
       proc.on 'close', ->
         try
-          match = err.match /error\.coffee:(\d+):(\d+)/
-          throw new Error err unless match
+          matchResult = err.match /error\.coffee:(\d+):(\d+)/
+          throw new Error err unless matchResult
 
-          [_, line, column] = match
+          [_, line, column] = matchResult
           equal line, 3 # Mapped source line
           equal column, 9 # Mapped source column
 

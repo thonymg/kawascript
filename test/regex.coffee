@@ -61,8 +61,8 @@ test "division is not confused for a regular expression", ->
   eq a, no
 
   #3182:
-  match = 'foo=bar'.match /=/
-  eq match[0], '='
+  matchResult = 'foo=bar'.match /=/
+  eq matchResult[0], '='
 
   #3410:
   ok ' '.match(/ /)[0] is ' '

@@ -5963,6 +5963,134 @@ exports.Sequence = class Sequence extends Base
       expressions:
         expression.ast(o) for expression in @expressions
 
+#### Pattern Matching
+
+# Base class for all pattern nodes.  Subclasses implement `compileTest` which
+# returns fragments for the boolean condition `subject === value` etc.
+class PatternNode extends Base
+  compileTest: (o, subjectFrags) -> throw new Error 'abstract PatternNode'
+  bindings: -> []
+  isWildcard: -> no
+
+# Matches a literal value via strict equality.
+exports.LiteralPattern = class LiteralPattern extends PatternNode
+  constructor: (@literal) -> super()
+  children: ['literal']
+
+  compileTest: (o, subjectFrags) ->
+    [].concat subjectFrags,
+      [@makeCode ' === '],
+      @literal.compileToFragments(o, LEVEL_PAREN)
+
+  bindings: -> []
+
+# Matches anything; optionally binds the value to a name.
+# When name is '_' this is a wildcard (no binding emitted).
+exports.BindingPattern = class BindingPattern extends PatternNode
+  constructor: (@name) -> super()
+
+  isWildcard: -> @name is '_'
+
+  compileTest: (o, subjectFrags) -> [@makeCode 'true']
+
+  bindings: ->
+    return [] if @isWildcard()
+    [@name]
+
+# Matches if left OR right pattern matches.
+exports.OrPattern = class OrPattern extends PatternNode
+  constructor: (@left, @right) -> super()
+  children: ['left', 'right']
+
+  compileTest: (o, subjectFrags) ->
+    leftTest  = @left.compileTest  o, subjectFrags
+    rightTest = @right.compileTest o, subjectFrags
+    [].concat leftTest, [@makeCode ' || '], rightTest
+
+  bindings: -> []
+
+# One arm of a match expression: pattern [if guard] -> body
+exports.MatchArm = class MatchArm extends Base
+  constructor: (@pattern, @guard, @body) -> super()
+  children: ['pattern', 'guard', 'body']
+
+  # Compile the arm as an `if` / `else if` branch.
+  # o.indent must be the level at which `if` / `else if` appears.
+  compileArm: (o, subjectFrags, isFirst) ->
+    idt  = o.indent
+    idt2 = idt + TAB
+    o2   = merge o, indent: idt2
+
+    condFrags = @pattern.compileTest o2, subjectFrags
+    if @guard
+      guardFrags = @guard.compileToFragments o2, LEVEL_PAREN
+      # Substitute pattern binding names with subject variable in guard.
+      # e.g. `| n if n > 0 ->` compiles the guard as `m > 0` (not `n > 0`).
+      bindings = @pattern.bindings()
+      if bindings.length > 0
+        subjectCode = (f.code for f in subjectFrags).join ''
+        guardFrags = for f in guardFrags
+          if f.code
+            Object.assign Object.create(Object.getPrototypeOf(f)), f,
+              code: f.code.replace new RegExp("\\b#{name}\\b", 'g'), subjectCode for name in bindings; f.code
+          else
+            f
+      condFrags  = [].concat condFrags, [@makeCode ' && '], guardFrags
+
+    opener = if isFirst then "#{idt}if (" else ' else if ('
+
+    [].concat(
+      [@makeCode opener],
+      condFrags,
+      [@makeCode ') {\n'],
+      @injectBindings(o2, subjectFrags),
+      [@makeCode "\n#{idt}}"]
+    )
+
+  # Prepend `const name = subject;` bindings, then compile the body.
+  injectBindings: (o, subjectFrags) ->
+    fragments = []
+    for name in @pattern.bindings()
+      fragments = fragments.concat(
+        [@makeCode "#{o.indent}const #{name} = "],
+        subjectFrags,
+        [@makeCode ';\n']
+      )
+    fragments.concat @body.compileToFragments o, LEVEL_TOP
+
+# The `match` expression node.
+exports.MatchNode = class MatchNode extends Base
+  constructor: (@subject, @arms) -> super()
+  children: ['subject', 'arms']
+
+  isStatement: YES
+
+  makeReturn: (results, mark) ->
+    arm.body.makeReturn results, mark for arm in @arms
+    this
+
+  compileNode: (o) ->
+    tempName = o.scope.freeVariable 'm', reserve: no
+    idt      = @tab
+
+    subjectFrags = [@makeCode tempName]
+
+    # Assign subject to a const temp so it is evaluated exactly once.
+    declFrags = [].concat(
+      [@makeCode "#{idt}const #{tempName} = "],
+      @subject.compileToFragments(o, LEVEL_PAREN),
+      [@makeCode ';\n']
+    )
+
+    # Each arm shares the same indent level as the const declaration.
+    oArm = merge o, indent: idt
+
+    armFrags = []
+    for arm, i in @arms
+      armFrags = armFrags.concat arm.compileArm(oArm, subjectFrags, i is 0)
+
+    [].concat declFrags, armFrags
+
 # Constants
 # ---------
 

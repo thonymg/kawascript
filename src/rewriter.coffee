@@ -272,7 +272,7 @@ exports.Rewriter = class Rewriter
 
       inControlFlow = =>
         seenFor = @findTagsBackwards(i, ['FOR']) and @findTagsBackwards(i, ['FORIN', 'FOROF', 'FORFROM'])
-        controlFlow = seenFor or @findTagsBackwards i, ['WHILE', 'UNTIL', 'LOOP', 'LEADING_WHEN']
+        controlFlow = seenFor or @findTagsBackwards i, ['WHILE', 'UNTIL', 'LOOP', 'LEADING_WHEN', 'MATCH_PIPE']
         return no unless controlFlow
         isFunc = no
         tagCurrentLine = token[2].first_line
@@ -694,7 +694,8 @@ exports.Rewriter = class Rewriter
       [tag] = token
       conditionTag = tag in ['->', '=>'] and
         @findTagsBackwards(i, ['IF', 'WHILE', 'FOR', 'UNTIL', 'SWITCH', 'WHEN', 'LEADING_WHEN', '[', 'INDEX_START']) and
-        not (@findTagsBackwards i, ['THEN', '..', '...'])
+        not (@findTagsBackwards i, ['THEN', '..', '...']) and
+        not (@findTagsBackwards i, ['MATCH_PIPE'])
 
       if tag is 'TERMINATOR'
         if @tag(i + 1) is 'ELSE' and @tag(i - 1) isnt 'OUTDENT'
@@ -749,6 +750,8 @@ exports.Rewriter = class Rewriter
 
     @scanTokens (token, i) ->
       return 1 unless token[0] is 'IF'
+      # Don't convert to POST_IF when this `if` is a match arm guard.
+      return 1 if @findTagsBackwards i, ['MATCH_PIPE']
       original = token
       @detectEnd i + 1, condition, action
       return 1
