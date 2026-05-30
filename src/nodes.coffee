@@ -6009,6 +6009,163 @@ exports.OrPattern = class OrPattern extends PatternNode
 
   bindings: -> []
 
+# Matches an array literal pattern, e.g. [h, ...t] or [0, 1].
+exports.ArrayPattern = class ArrayPattern extends PatternNode
+  constructor: (@arr) -> super()
+  children: ['arr']
+
+  _parseSingle: (node) ->
+    base = if node instanceof Value and not node.properties.length then node.base else node
+    if base instanceof IdentifierLiteral then new BindingPattern base.value
+    else if base instanceof Arr          then new ArrayPattern base
+    else if base instanceof Obj          then new ObjectPattern base
+    else                                      new LiteralPattern base
+
+  _parse: ->
+    elemsBefore = []; elemsAfter = []; restName = null; seenRest = no
+    for el in @arr.objects
+      if el instanceof Splat
+        b = el.name; b = b.base if b instanceof Value
+        restName = b.value
+        seenRest = yes
+      else if seenRest
+        elemsAfter.push @_parseSingle el
+      else
+        elemsBefore.push @_parseSingle el
+    {elemsBefore, elemsAfter, restName}
+
+  compileTest: (o, subjectFrags) ->
+    {elemsBefore, elemsAfter, restName} = @_parse()
+    s = (f.code for f in subjectFrags).join ''
+    totalElems = elemsBefore.length + elemsAfter.length
+    op = if restName? then '>=' else '==='
+    result = [@makeCode "Array.isArray(#{s}) && #{s}.length #{op} #{totalElems}"]
+    for pat, i in elemsBefore when not (pat instanceof BindingPattern)
+      result.push @makeCode ' && '
+      result = result.concat pat.compileTest(o, [@makeCode "#{s}[#{i}]"])
+    for pat, j in elemsAfter when not (pat instanceof BindingPattern)
+      offset = elemsAfter.length - j
+      result.push @makeCode ' && '
+      result = result.concat pat.compileTest(o, [@makeCode "#{s}[#{s}.length - #{offset}]"])
+    result
+
+  bindingAccessors: ->
+    {elemsBefore, elemsAfter, restName} = @_parse()
+    acc = {}
+    for pat, i in elemsBefore
+      if pat instanceof BindingPattern and not pat.isWildcard()
+        acc[pat.name] = "[#{i}]"
+      else if pat.bindingAccessors?
+        for own name, nestedAcc of pat.bindingAccessors()
+          acc[name] = "[#{i}]#{nestedAcc}"
+    for pat, j in elemsAfter
+      offset = elemsAfter.length - j
+      if pat instanceof BindingPattern and not pat.isWildcard()
+        acc[pat.name] = ".slice(-#{offset})[0]"
+      else if pat.bindingAccessors?
+        for own name, nestedAcc of pat.bindingAccessors()
+          acc[name] = ".slice(-#{offset})[0]#{nestedAcc}"
+    if restName?
+      sliceEnd = if elemsAfter.length > 0 then ", -#{elemsAfter.length}" else ''
+      acc[restName] = ".slice(#{elemsBefore.length}#{sliceEnd})"
+    acc
+
+  bindings: ->
+    {elemsBefore, elemsAfter, restName} = @_parse()
+    names = []
+    for pat in elemsBefore
+      if pat instanceof BindingPattern and not pat.isWildcard() then names.push pat.name
+      else names = names.concat pat.bindings()
+    for pat in elemsAfter
+      if pat instanceof BindingPattern and not pat.isWildcard() then names.push pat.name
+      else names = names.concat pat.bindings()
+    names.push restName if restName?
+    names
+
+# Matches an object literal pattern, e.g. {width, height} or {type: "circle", r}.
+exports.ObjectPattern = class ObjectPattern extends PatternNode
+  constructor: (@obj) -> super()
+  children: ['obj']
+
+  _parse: ->
+    for prop in @obj.properties
+      if prop instanceof Assign and prop.context is 'object'
+        key = prop.variable.base.value
+        valBase = prop.value
+        valBase = valBase.base if valBase instanceof Value and not valBase.properties.length
+        if valBase instanceof IdentifierLiteral
+          {key, binding: valBase.value, exact: null, nested: null}
+        else if valBase instanceof Arr
+          {key, binding: null, exact: null, nested: new ArrayPattern(valBase)}
+        else if valBase instanceof Obj
+          {key, binding: null, exact: null, nested: new ObjectPattern(valBase)}
+        else
+          {key, binding: null, exact: valBase, nested: null}
+      else
+        k = (if prop instanceof Value then prop.base else prop).value
+        {key: k, binding: k, exact: null, nested: null}
+
+  compileTest: (o, subjectFrags) ->
+    s = (f.code for f in subjectFrags).join ''
+    result = [@makeCode "#{s} != null && typeof #{s} === 'object'"]
+    for {key, binding, exact, nested} in @_parse()
+      if exact?
+        result.push @makeCode " && #{s}.#{key} === "
+        result = result.concat exact.compileToFragments(o, LEVEL_PAREN)
+      else if nested?
+        result.push @makeCode ' && '
+        result = result.concat nested.compileTest(o, [@makeCode "#{s}.#{key}"])
+      else if binding?
+        result.push @makeCode " && '#{key}' in #{s}"
+    result
+
+  bindingAccessors: ->
+    acc = {}
+    for {key, binding, nested} in @_parse()
+      if binding?
+        acc[binding] = ".#{key}"
+      else if nested?
+        for own name, nestedAcc of nested.bindingAccessors()
+          acc[name] = ".#{key}#{nestedAcc}"
+    acc
+
+  bindings: ->
+    names = []
+    for {binding, nested} in @_parse()
+      if binding? then names.push binding
+      else if nested? then names = names.concat nested.bindings()
+    names
+
+# Matches a numeric range, e.g. 1..10 (inclusive) or 1...10 (exclusive upper).
+exports.RangePattern = class RangePattern extends PatternNode
+  constructor: (@from, @to, @exclusive = no) -> super()
+  children: ['from', 'to']
+
+  compileTest: (o, subjectFrags) ->
+    fromFrags = @from.compileToFragments o, LEVEL_PAREN
+    toFrags   = @to.compileToFragments   o, LEVEL_PAREN
+    upperOp   = if @exclusive then '<' else '<='
+    [].concat(
+      subjectFrags, [@makeCode ' >= '],
+      fromFrags,
+      [@makeCode " && "],
+      subjectFrags, [@makeCode " #{upperOp} "],
+      toFrags
+    )
+
+  bindings: -> []
+
+# Matches by prototype chain, e.g. instanceof Error.
+exports.TypePattern = class TypePattern extends PatternNode
+  constructor: (@typeName) -> super()
+  children: ['typeName']
+
+  compileTest: (o, subjectFrags) ->
+    typeFrags = @typeName.compileToFragments o, LEVEL_ACCESS
+    [].concat subjectFrags, [@makeCode ' instanceof '], typeFrags
+
+  bindings: -> []
+
 # One arm of a match expression: pattern [if guard] -> body
 exports.MatchArm = class MatchArm extends Base
   constructor: (@pattern, @guard, @body) -> super()
@@ -6026,16 +6183,21 @@ exports.MatchArm = class MatchArm extends Base
       guardFrags = @guard.compileToFragments o2, LEVEL_PAREN
       # Substitute pattern binding names with subject variable in guard.
       # e.g. `| n if n > 0 ->` compiles the guard as `m > 0` (not `n > 0`).
-      bindings = @pattern.bindings()
-      if bindings.length > 0
+      accessors = @pattern.bindingAccessors?() or null
+      bindings  = @pattern.bindings()
+      if accessors? or bindings.length > 0
         subjectCode = (f.code for f in subjectFrags).join ''
         guardFrags = for f in guardFrags
           unless f.code
             f
           else
             let code = f.code
-            for name in bindings
-              code = code.replace new RegExp("\\b#{name}\\b", 'g'), subjectCode
+            if accessors?
+              for own name, acc of accessors
+                code = code.replace new RegExp("\\b#{name}\\b", 'g'), subjectCode + acc
+            else
+              for name in bindings
+                code = code.replace new RegExp("\\b#{name}\\b", 'g'), subjectCode
             Object.assign Object.create(Object.getPrototypeOf(f)), f, {code}
       condFrags  = [].concat condFrags, [@makeCode ' && '], guardFrags
 
@@ -6052,12 +6214,17 @@ exports.MatchArm = class MatchArm extends Base
   # Prepend `const name = subject;` bindings, then compile the body.
   injectBindings: (o, subjectFrags) ->
     fragments = []
-    for name in @pattern.bindings()
-      fragments = fragments.concat(
-        [@makeCode "#{o.indent}const #{name} = "],
-        subjectFrags,
-        [@makeCode ';\n']
-      )
+    if @pattern.bindingAccessors?
+      subjectCode = (f.code for f in subjectFrags).join ''
+      for own name, acc of @pattern.bindingAccessors()
+        fragments.push @makeCode "#{o.indent}const #{name} = #{subjectCode}#{acc};\n"
+    else
+      for name in @pattern.bindings()
+        fragments = fragments.concat(
+          [@makeCode "#{o.indent}const #{name} = "],
+          subjectFrags,
+          [@makeCode ';\n']
+        )
     fragments.concat @body.compileToFragments o, LEVEL_TOP
 
 # The `match` expression node.

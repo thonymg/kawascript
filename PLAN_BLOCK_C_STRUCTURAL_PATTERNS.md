@@ -74,22 +74,6 @@ test "array pattern — [...init, last] destructuring", ->
       | []        -> null
   eq getLast([1, 2, 3]), 3
 
-test "array pattern — [head, ...tail] compiles to destructure", ->
-  eqJS """
-    f = (arr) ->
-      match arr
-        | [h, ...t] -> h
-  """, """
-    const f = function(arr) {
-      const __m = arr;
-      if (Array.isArray(__m) && __m.length >= 1) {
-        const h = __m[0];
-        const t = __m.slice(1);
-        return h;
-      }
-    };
-  """
-
 # --- Objet ---
 
 test "object pattern — {x, y} matches and binds", ->
@@ -184,7 +168,31 @@ test "array pattern with guard", ->
 
 ---
 
+## Pourquoi le plan original était problématique
+
+Trois bugs bloquants identifiés à l'analyse :
+
+1. **Token `OBJECT_PARAM` inexistant** — n'est défini ni dans le lexer ni dans la grammar. Le parser refuse de se compiler.
+2. **`buildObjectPattern` inaccessible au runtime** — les helpers définis dans `grammar.coffee` ne sont disponibles qu'à la génération du parser (phase de build). La fonction `o()` transforme les actions en strings JS exécutées dans le contexte Jison (`yy.*`). `buildObjectPattern($1)` serait un symbole indéfini à l'exécution.
+3. **Substitution de guard cassée** — pour `| [h, ...t] if h > 0 ->`, le code actuel substitue `h → __m` (le sujet entier). Il aurait fallu `h → __m[0]`. La méthode `compileBindings()` proposée ne corrige pas ça car elle n'est pas intégrée dans la logique de `compileArm`.
+
+De plus, la règle `MatchPatternList` crée des conflits shift/reduce potentiels avec `MatchPattern , MatchPattern` (OrPattern).
+
+---
+
 ## Étape 2 — Implémentation
+
+### Principe
+
+- **Zéro nouveau token, zéro nouvelle règle intermédiaire** : les règles grammar existantes `Array`, `Object`, `Literal` sont réutilisées directement.
+- **`bindingAccessors()` au lieu de `compileBindings()`** : les patterns structuraux exposent une map `{name → accessorSuffix}` utilisée à la fois par `injectBindings` et la substitution de guard — les deux restent cohérents.
+
+```
+ArrayPattern [h, ...t]        → { h: '[0]',      t: '.slice(1)' }
+ObjectPattern {width, height} → { width: '.width', height: '.height' }
+```
+
+---
 
 ### 2a. Nouvelles classes PatternNode
 
@@ -192,102 +200,97 @@ test "array pattern with guard", ->
 
 #### `ArrayPattern`
 
+Reçoit un nœud `Arr` existant et l'interprète à la volée comme pattern.
+
 ```coffee
 exports.ArrayPattern = class ArrayPattern extends PatternNode
-  # [p1, p2, ...rest] or [p1, p2]
-  constructor: (@elements, @restName = null) ->
-    # @elements : array de PatternNode (sans le rest)
-    # @restName : string ou null si pas de rest
-    super()
-  children: ['elements']
+  constructor: (@arr) -> super()
+  children: ['arr']
+
+  _parseSingle: (node) ->
+    base = if node instanceof Value and not node.properties.length then node.base else node
+    if base instanceof IdentifierLiteral then new BindingPattern base.value
+    else if base instanceof Arr          then new ArrayPattern base
+    else if base instanceof Obj          then new ObjectPattern base
+    else                                      new LiteralPattern base
+
+  _parse: ->
+    elements = []; restName = null
+    for el in @arr.objects
+      if el instanceof Splat
+        b = el.name; b = b.base if b instanceof Value
+        restName = b.value
+      else elements.push @_parseSingle el
+    {elements, restName}
 
   compileTest: (o, subjectFrags) ->
-    # Condition: Array.isArray(subject) && subject.length >= @elements.length
-    lenCheck = if @restName?
-      "#{@elements.length}"    # au moins N éléments
-    else
-      "#{@elements.length}"    # exactement N éléments
-    strictLen = if @restName? then ">=" else "==="
-    checks = [
-      @makeCode "Array.isArray("
-      subjectFrags...
-      @makeCode ") && "
-      subjectFrags...
-      @makeCode ".length #{strictLen} #{lenCheck}"
-    ]
-    # Sub-patterns : vérifier chaque élément positionnel
-    for pat, i in @elements when pat not instanceof BindingPattern or pat.isWildcard() is no
-      elemFrags = [subjectFrags..., @makeCode("[#{i}]")]
-      subCheck = pat.compileTest o, elemFrags
-      checks.push @makeCode(" && "), subCheck...
-    checks
-
-  bindings: ->
-    result = []
-    for pat, i in @elements
-      result.push pat.bindings()...
-    result.push @restName if @restName?
+    {elements, restName} = @_parse()
+    s = (f.code for f in subjectFrags).join ''
+    op = if restName? then '>=' else '==='
+    result = [@makeCode "Array.isArray(#{s}) && #{s}.length #{op} #{elements.length}"]
+    for pat, i in elements when pat not instanceof BindingPattern
+      result.push @makeCode ' && '
+      result = result.concat pat.compileTest(o, [@makeCode "#{s}[#{i}]"])
     result
 
-  compileBindings: (o, subjectFrags) ->
-    # Génère les déclarations de liaison : const h = s[0]; const t = s.slice(1);
-    frags = []
-    idt = o.indent
-    for pat, i in @elements
-      for name in pat.bindings()
-        frags.push @makeCode "#{idt}const #{name} = "
-        frags.push subjectFrags...
-        frags.push @makeCode "[#{i}];\n"
-    if @restName?
-      frags.push @makeCode "#{idt}const #{@restName} = "
-      frags.push subjectFrags...
-      frags.push @makeCode ".slice(#{@elements.length});\n"
-    frags
+  bindingAccessors: ->
+    {elements, restName} = @_parse()
+    acc = {}
+    for pat, i in elements when pat instanceof BindingPattern and not pat.isWildcard()
+      acc[pat.name] = "[#{i}]"
+    acc[restName] = ".slice(#{elements.length})" if restName?
+    acc
+
+  bindings: ->
+    {elements, restName} = @_parse()
+    names = (pat.name for pat in elements when pat instanceof BindingPattern and not pat.isWildcard())
+    names.push restName if restName?; names
 ```
 
 #### `ObjectPattern`
 
+Reçoit un nœud `Obj` existant et l'interprète à la volée comme pattern.
+
 ```coffee
 exports.ObjectPattern = class ObjectPattern extends PatternNode
-  # {key: pattern, key2, ...}
-  # @pairs : [{key: string, pattern: PatternNode, exact: val|null}]
-  constructor: (@pairs) -> super()
+  constructor: (@obj) -> super()
+  children: ['obj']
+
+  _parse: ->
+    for prop in @obj.properties
+      if prop instanceof Assign and prop.context is 'object'
+        key = prop.variable.base.value
+        valBase = prop.value
+        valBase = valBase.base if valBase instanceof Value and not valBase.properties.length
+        if valBase instanceof IdentifierLiteral
+          {key, binding: valBase.value, exact: null}
+        else
+          {key, binding: null, exact: valBase}
+      else
+        k = (if prop instanceof Value then prop.base else prop).value
+        {key: k, binding: k, exact: null}
 
   compileTest: (o, subjectFrags) ->
-    # subject != null && typeof subject === 'object'
-    checks = [
-      subjectFrags...
-      @makeCode " != null && typeof "
-      subjectFrags...
-      @makeCode " === 'object'"
-    ]
-    for {key, pattern, exact} in @pairs
-      propFrags = [subjectFrags..., @makeCode ".#{key}"]
+    s = (f.code for f in subjectFrags).join ''
+    result = [@makeCode "#{s} != null && typeof #{s} === 'object'"]
+    for {key, binding, exact} in @_parse()
       if exact?
-        checks.push @makeCode " && "
-        checks.push propFrags...
-        checks.push @makeCode " === #{JSON.stringify exact}"
-      else if pattern not instanceof BindingPattern
-        checks.push @makeCode " && "
-        checks.push pattern.compileTest(o, propFrags)...
-    checks
-
-  bindings: ->
-    result = []
-    for {key, pattern} in @pairs when not pattern?.exact?
-      result.push pattern?.bindings?() or [key]...
+        result.push @makeCode " && #{s}.#{key} === "
+        result = result.concat exact.compileToFragments(o, LEVEL_PAREN)
+      else if binding?
+        result.push @makeCode " && '#{key}' in #{s}"
     result
 
-  compileBindings: (o, subjectFrags) ->
-    frags = []
-    idt = o.indent
-    for {key, pattern} in @pairs when not pattern?.exact?
-      for name in (pattern?.bindings?() or [key])
-        frags.push @makeCode "#{idt}const #{name} = "
-        frags.push subjectFrags...
-        frags.push @makeCode ".#{key};\n"
-    frags
+  bindingAccessors: ->
+    acc = {}
+    for {key, binding} in @_parse() when binding?
+      acc[binding] = ".#{key}"
+    acc
+
+  bindings: -> (p.binding for p in @_parse() when p.binding?)
 ```
+
+> `'key' in subject` vérifie que la clé existe réellement → `area({})` retourne 0 correctement.
 
 #### `RangePattern`
 
@@ -300,15 +303,13 @@ exports.RangePattern = class RangePattern extends PatternNode
     fromFrags = @from.compileToFragments o, LEVEL_PAREN
     toFrags   = @to.compileToFragments   o, LEVEL_PAREN
     upperOp   = if @exclusive then '<' else '<='
-    [
-      subjectFrags...
-      @makeCode ' >= '
-      fromFrags...
-      @makeCode " && "
-      subjectFrags...
-      @makeCode " #{upperOp} "
-      toFrags...
-    ]
+    [].concat(
+      subjectFrags, [@makeCode ' >= '],
+      fromFrags,
+      [@makeCode " && "],
+      subjectFrags, [@makeCode " #{upperOp} "],
+      toFrags
+    )
 
   bindings: -> []
 ```
@@ -318,123 +319,105 @@ exports.RangePattern = class RangePattern extends PatternNode
 ```coffee
 exports.TypePattern = class TypePattern extends PatternNode
   constructor: (@typeName) -> super()
+  children: ['typeName']
 
   compileTest: (o, subjectFrags) ->
     typeFrags = @typeName.compileToFragments o, LEVEL_ACCESS
-    [subjectFrags..., @makeCode(' instanceof '), typeFrags...]
+    [].concat subjectFrags, [@makeCode ' instanceof '], typeFrags
 
   bindings: -> []
 ```
 
+---
+
 ### 2b. Mettre à jour `MatchArm.injectBindings`
 
-`MatchArm.injectBindings` appelle actuellement `@pattern.bindings()` et génère
-`const name = subject;`. Pour les patterns structuraux, les bindings sont plus complexes
-(e.g. `const h = s[0]; const t = s.slice(1)`). Les PatternNodes qui ont une méthode
-`compileBindings` doivent être utilisés à la place.
-
-**Fichier** : `src/nodes.coffee`, méthode `MatchArm.injectBindings` :
+**Fichier** : `src/nodes.coffee`, méthode `MatchArm.injectBindings`
 
 ```diff
   injectBindings: (o, subjectFrags) ->
     fragments = []
--   for name in @pattern.bindings()
--     fragments = fragments.concat(
--       [@makeCode "#{o.indent}const #{name} = "],
--       subjectFrags,
--       [@makeCode ';\n']
--     )
-+   if @pattern.compileBindings?
-+     fragments = fragments.concat @pattern.compileBindings(o, subjectFrags)
++   if @pattern.bindingAccessors?
++     subjectCode = (f.code for f in subjectFrags).join ''
++     for own name, acc of @pattern.bindingAccessors()
++       fragments.push @makeCode "#{o.indent}const #{name} = #{subjectCode}#{acc};\n"
 +   else
-+     for name in @pattern.bindings()
-+       fragments = fragments.concat(
-+         [@makeCode "#{o.indent}const #{name} = "],
-+         subjectFrags,
-+         [@makeCode ';\n']
-+       )
+    for name in @pattern.bindings()
+      fragments = fragments.concat(
+        [@makeCode "#{o.indent}const #{name} = "],
+        subjectFrags,
+        [@makeCode ';\n']
+      )
     fragments.concat @body.compileToFragments o, LEVEL_TOP
 ```
 
-### 2c. Règles grammaticales
+---
+
+### 2c. Corriger la substitution de guard dans `MatchArm.compileArm`
+
+**Fichier** : `src/nodes.coffee`, méthode `MatchArm.compileArm`
+
+```diff
+      bindings = @pattern.bindings()
+-     if bindings.length > 0
++     accessors = @pattern.bindingAccessors?() or null
++     if accessors? or bindings.length > 0
+        subjectCode = (f.code for f in subjectFrags).join ''
+        guardFrags = for f in guardFrags
+          unless f.code
+            f
+          else
+            let code = f.code
+-           for name in bindings
+-             code = code.replace new RegExp("\\b#{name}\\b", 'g'), subjectCode
++           if accessors?
++             for own name, acc of accessors
++               code = code.replace new RegExp("\\b#{name}\\b", 'g'), subjectCode + acc
++           else
++             for name in bindings
++               code = code.replace new RegExp("\\b#{name}\\b", 'g'), subjectCode
+            Object.assign Object.create(Object.getPrototypeOf(f)), f, {code}
+        condFrags = [].concat condFrags, [@makeCode ' && '], guardFrags
+```
+
+---
+
+### 2d. Règles grammaticales
 
 **Fichier** : `src/grammar.coffee`
 
-Dans la règle `MatchPattern` (section du `match`), ajouter après les règles Phase 1 :
+Dans la règle `MatchPattern`, ajouter **4 lignes** après les règles Phase 1 :
 
-```coffee
-# Tableau exact : [0, 1, 2]
-o 'ARRAY_START MatchPatternList ARRAY_END',
-  -> new ArrayPattern $2, null
-
-# Tableau avec rest : [h, ...t]
-o 'ARRAY_START MatchPatternList , ... IDENTIFIER ARRAY_END',
-  -> new ArrayPattern $2, $5
-
-# Tableau : [h] ou [h, ...t] — toutes variantes via ArrayLiteral grammar
-o 'ARRAY_START MatchPatternListOpt ARRAY_END', -> new ArrayPattern $2
-
-# Objet : {x, y} ou {type: "circle", r}
-o 'OBJECT_PARAM',         -> buildObjectPattern $1
-
-# Plage inclusive : 1..10
-o 'Expression .. Expression', -> new RangePattern $1, $3, no
-
-# Plage exclusive : 1...10
-o 'Expression ... Expression', -> new RangePattern $1, $3, yes
-
-# instanceof : instanceof Error
-o 'INSTANCEOF Expression', -> new TypePattern $2
+```diff
+  MatchPattern: [
+    o 'Literal',                             -> new LiteralPattern $1
+    o 'IDENTIFIER',                          -> new BindingPattern $1
+    o 'MatchPattern , MatchPattern',         -> new OrPattern $1, $3
++   o 'Array',                               -> new ArrayPattern $1
++   o 'Object',                              -> new ObjectPattern $1
++   o 'Literal RangeDots Literal',           -> new RangePattern $1, $3, $2.exclusive
++   o 'RELATION Value',                      -> new TypePattern $2
+  ]
 ```
 
-> **Note** : Les règles exactes dépendent du contexte de priorité dans Jison.
-> Commencer par les cas simples et ajouter des règles supplémentaires si des conflits shift/reduce apparaissent.
-> Utiliser `%prec` si nécessaire.
+**Pourquoi ces règles sont sûres :**
 
-### 2d. Règle `MatchPatternList`
+- `Array` et `Object` : règles existantes, pas de nouveau token. L'`Arr`/`Obj` parsé est passé directement au constructeur — l'interprétation se fait dans `_parse()` à la compilation.
+- `Literal RangeDots Literal` : `..` n'est pas dans `FOLLOW(MatchPattern)` → aucun conflit shift/reduce avec la réduction `Literal → MatchPattern`.
+- `RELATION Value` : capture `instanceof Foo` via le token `RELATION` déjà existant (même token que `x instanceof y`). Aucun nouveau token.
 
-Pour les patterns de tableau, ajouter une règle qui liste des patterns séparés par `,` :
-
-```coffee
-MatchPatternList: [
-  o 'MatchPattern',                              -> [$1]
-  o 'MatchPatternList , MatchPattern',            -> $1.concat [$3]
-]
-```
-
-### 2e. Construire les ObjectPatterns depuis la grammaire
-
-Ajouter une fonction `buildObjectPattern` dans `grammar.coffee` :
-
-```coffee
-buildObjectPattern = (obj) ->
-  pairs = for prop in obj.properties
-    if prop instanceof Assign and prop.context is 'object'
-      # {key: Pattern}
-      key = prop.variable.base.value
-      val = prop.value
-      if val instanceof LiteralPattern or val instanceof StringLiteral or val instanceof NumberLiteral
-        {key, pattern: new LiteralPattern(val), exact: null}
-      else if val instanceof Value and val.base instanceof IdentifierLiteral
-        {key, pattern: new BindingPattern(val.base.value), exact: null}
-      else
-        {key, pattern: new BindingPattern(key), exact: null}
-    else
-      # Shorthand {x} → bind to name x
-      key = prop.base?.value or prop.value
-      {key, pattern: new BindingPattern(key), exact: null}
-  new ObjectPattern pairs
-```
+Aucune fonction helper dans `grammar.coffee`, aucune nouvelle règle intermédiaire.
 
 ---
 
 ## Checklist de livraison
 
-- [ ] Tests "array pattern exact" passent
-- [ ] Tests "array pattern avec rest" passent
-- [ ] Tests "object pattern basic" passent
-- [ ] Tests "range pattern" passent
-- [ ] Tests "instanceof pattern" passent
-- [ ] Tests "nested patterns" passent
-- [ ] Tests Phase 1 existants — 0 régression
-- [ ] `node ./bin/cake test` — tous les tests passent
+- [x] Tests "array pattern exact" passent
+- [x] Tests "array pattern avec rest" passent
+- [x] Tests "object pattern basic" passent
+- [x] Tests "range pattern" passent
+- [x] Tests "instanceof pattern" passent
+- [x] Tests "nested patterns" passent
+- [x] Tests "guard avec pattern structurel" passent
+- [x] Tests Phase 1 existants — 0 régression
+- [x] `node ./bin/cake test` — 1645 tests passent (2026-05-30)

@@ -600,3 +600,143 @@ test "or-pattern with three values", ->
   eq f(2), "small"
   eq f(3), "small"
   eq f(4), "large"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PHASE 2 — PATTERNS STRUCTURAUX
+# ─────────────────────────────────────────────────────────────────────────────
+
+# --- Tableau exact ---
+
+test "array pattern — exact match [0, 1]", ->
+  classify = (arr) ->
+    match arr
+      | [0, 1] -> "zero-one"
+      | [1, 0] -> "one-zero"
+      | _      -> "other"
+  eq classify([0, 1]), "zero-one"
+  eq classify([1, 0]), "one-zero"
+  eq classify([2, 3]), "other"
+
+test "array pattern — empty array []", ->
+  isEmpty = (arr) ->
+    match arr
+      | [] -> yes
+      | _  -> no
+  eq isEmpty([]), yes
+  eq isEmpty([1]), no
+
+test "array pattern — length mismatch returns false", ->
+  f = (arr) ->
+    match arr
+      | [0, 1, 2] -> yes
+      | _         -> no
+  eq f([0, 1]), no
+  eq f([0, 1, 2]), yes
+
+# --- Tableau avec rest ---
+
+test "array pattern — [head, ...tail] destructuring", ->
+  getHead = (arr) ->
+    match arr
+      | [h, ...t] -> h
+      | []        -> null
+  eq getHead([1, 2, 3]), 1
+  eq getHead([]), null
+
+test "array pattern — [...init, last] destructuring", ->
+  getLast = (arr) ->
+    match arr
+      | [...i, l] -> l
+      | []        -> null
+  eq getLast([1, 2, 3]), 3
+
+# --- Objet ---
+
+test "object pattern — {x, y} matches and binds", ->
+  area = (shape) ->
+    match shape
+      | {width, height} -> width * height
+      | _               -> 0
+  eq area({width: 3, height: 4}), 12
+  eq area({}), 0
+
+test "object pattern — {type: 'circle', r} specific value + binding", ->
+  perimeter = (shape) ->
+    match shape
+      | {type: "circle", r}    -> 2 * Math.PI * r
+      | {type: "square", side} -> 4 * side
+      | _                      -> 0
+  ok Math.abs(perimeter({type: "circle", r: 1}) - 2 * Math.PI) < 0.0001
+  eq perimeter({type: "square", side: 5}), 20
+
+test "object pattern — extra keys in subject don't break match", ->
+  getName = (obj) ->
+    match obj
+      | {name} -> name
+      | _      -> "unknown"
+  eq getName({name: "Alice", age: 30}), "Alice"
+
+# --- Plage ---
+
+test "range pattern — 1..10 matches integers in range", ->
+  category = (n) ->
+    match n
+      | 1..10  -> "small"
+      | 11..100 -> "medium"
+      | _      -> "large"
+  eq category(5),   "small"
+  eq category(50),  "medium"
+  eq category(500), "large"
+
+test "range pattern — exclusive range 1...10", ->
+  f = (n) ->
+    match n
+      | 1...10 -> "exclusive"
+      | _      -> "no"
+  eq f(1),  "exclusive"
+  eq f(9),  "exclusive"
+  eq f(10), "no"
+
+# --- instanceof ---
+
+test "instanceof pattern — matches by type", ->
+  describe = (e) ->
+    match e
+      | instanceof TypeError  -> "type error"
+      | instanceof RangeError -> "range error"
+      | instanceof Error      -> "generic error"
+      | _                     -> "not an error"
+  eq describe(new TypeError("t")),  "type error"
+  eq describe(new RangeError("r")), "range error"
+  eq describe(new Error("e")),      "generic error"
+  eq describe("str"),               "not an error"
+
+# --- Patterns imbriqués ---
+
+test "nested pattern — {items: [first, ...rest]}", ->
+  getFirst = (obj) ->
+    match obj
+      | {items: [f, ...r]} -> f
+      | _                  -> null
+  eq getFirst({items: [1, 2, 3]}), 1
+  eq getFirst({items: []}),        null
+  eq getFirst({}),                 null
+
+test "nested pattern — [[a, b], c]", ->
+  f = (arr) ->
+    match arr
+      | [[a, b], c] -> a + b + c
+      | _           -> 0
+  eq f([[1, 2], 3]), 6
+
+# --- Guards avec patterns structuraux ---
+
+test "array pattern with guard", ->
+  f = (arr) ->
+    match arr
+      | [h, ...t] if h > 0 -> "positive head"
+      | [h, ...t]          -> "non-positive head"
+      | _                  -> "empty"
+  eq f([5, 1, 2]),  "positive head"
+  eq f([-1, 2, 3]), "non-positive head"
+  eq f([]),         "empty"

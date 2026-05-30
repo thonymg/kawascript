@@ -894,6 +894,10 @@ let grammar =
     o 'Literal',                                           -> new LiteralPattern $1
     o 'IDENTIFIER',                                        -> new BindingPattern $1
     o 'MatchPattern , MatchPattern',                       -> new OrPattern $1, $3
+    o 'Array',                                             -> new ArrayPattern $1
+    o 'Object',                                            -> new ObjectPattern $1
+    o 'Literal RangeDots Literal',                         -> new RangePattern $1, $3, $2.exclusive
+    o 'RELATION Value',                                    -> new TypePattern $2
   ]
 
   # The most basic form of *if* is a condition and an action. The following
