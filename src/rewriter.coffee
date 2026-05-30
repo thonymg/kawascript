@@ -871,4 +871,4 @@ DISCARDED = ['(', ')', '[', ']', '{', '}', ':', '.', '..', '...', ',', '=', '++'
 # Tokens that, when appearing at the end of a line, suppress a following TERMINATOR/INDENT token
 exports.UNFINISHED = UNFINISHED = ['\\', '.', '?.', '?::', 'UNARY', 'DO', 'DO_IIFE', 'MATH', 'UNARY_MATH', '+', '-',
            '**', 'SHIFT', 'RELATION', 'COMPARE', '&', '^', '|', '&&', '||',
-           'BIN?', 'EXTENDS', 'PIPE']
+           'BIN?', 'EXTENDS', 'PIPE', 'COMPOSE_FWD']

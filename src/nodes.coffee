@@ -6128,10 +6128,30 @@ exports.PipeOp = class PipeOp extends Base
 
   compilePipeIntoCall: (o, leftFrags, call) ->
     fnFrags  = call.variable.compileToFragments o, LEVEL_ACCESS
-    argFrags = [].concat leftFrags
-    for arg in call.args
-      argFrags.push @makeCode ', '
-      argFrags = argFrags.concat arg.compileToFragments o, LEVEL_LIST
+
+    isPlaceholder = (a) ->
+      v = a.unwrap()
+      v instanceof IdentifierLiteral and v.value is '_' and not v.properties?.length
+
+    placeholderCount = call.args.filter(isPlaceholder).length
+    if placeholderCount > 1
+      @error 'only one placeholder _ is allowed per pipe call'
+
+    if placeholderCount is 1
+      argFrags = []
+      for arg in call.args
+        if isPlaceholder arg
+          argFrags.push @makeCode ', ' unless argFrags.length is 0
+          argFrags = argFrags.concat leftFrags
+        else
+          argFrags.push @makeCode ', ' unless argFrags.length is 0
+          argFrags = argFrags.concat arg.compileToFragments o, LEVEL_LIST
+    else
+      argFrags = [].concat leftFrags
+      for arg in call.args
+        argFrags.push @makeCode ', '
+        argFrags = argFrags.concat arg.compileToFragments o, LEVEL_LIST
+
     [].concat fnFrags, [@makeCode '('], argFrags, [@makeCode ')']
 
   astType: -> 'PipeExpression'
@@ -6140,6 +6160,24 @@ exports.PipeOp = class PipeOp extends Base
     return
       left:  @left.ast o, LEVEL_PAREN
       right: @right.ast o, LEVEL_PAREN
+
+#### ComposeOp
+
+# `f >>= g` compiles to `(x) -> g(f(x))` — forward function composition.
+exports.ComposeOp = class ComposeOp extends Base
+  constructor: (@left, @right) -> super()
+
+  children: ['left', 'right']
+
+  isStatement: NO
+
+  compileNode: (o) ->
+    paramName = '__x'
+    innerCall = new Call @left,  [new IdentifierLiteral paramName]
+    outerCall = new Call @right, [innerCall]
+    body      = new Block [outerCall]
+    lambda    = new Code [new Param new IdentifierLiteral(paramName)], body
+    lambda.compileToFragments o, LEVEL_PAREN
 
 # Constants
 # ---------

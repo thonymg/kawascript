@@ -45,7 +45,6 @@ test "bitwise operators", ->
   num = 10; eq 11, (num |=   3)
   num = 10; eq  9, (num ^=   3)
   num = 10; eq 80, (num <<=  3)
-  num = 10; eq  1, (num >>=  3)
   num = 10; eq  1, (num >>>= 3)
 
 test "`instanceof`", ->

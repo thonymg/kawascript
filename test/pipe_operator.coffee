@@ -400,3 +400,70 @@ test "chained pipe where one step uses match", ->
   eq (-5 |> sign |> double), -2
   eq ( 3 |> sign |> double),  2
   eq ( 0 |> sign |> double),  0
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PHASE 2 — ERGONOMIE
+# ─────────────────────────────────────────────────────────────────────────────
+
+# 12. PLACEHOLDER _
+# ─────────────────────────────────────────────────────────────────────────────
+
+test "placeholder _ — valeur pipée en position non-première", ->
+  slice = (str, start, end) -> str.slice start, end
+  eq ("hello" |> slice _, 1, 3), "el"
+
+test "placeholder _ — valeur pipée comme dernier argument", ->
+  myReduce = (init, fn, data) -> data.reduce fn, init
+  result = [1, 2, 3] |> myReduce 0, ((a, b) -> a + b), _
+  eq result, 6
+
+test "placeholder _ — compiles to positional insert", ->
+  eqJS """
+    slice = (str, start, end) -> str.slice start, end
+    result = "hello" |> slice _, 1, 3
+  """, """
+    const slice = function(str, start, end) {
+      return str.slice(start, end);
+    };
+    const result = slice("hello", 1, 3);
+  """
+
+test "placeholder _ — multiple placeholders are invalid (syntax error expected)", ->
+  throws (-> CoffeeScript.compile "a |> f _, _"), /placeholder/
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 13. COMPOSITION >>=
+# ─────────────────────────────────────────────────────────────────────────────
+
+test "composition >>= — f >>= g = (x) -> g(f(x))", ->
+  double = (x) -> x * 2
+  inc    = (x) -> x + 1
+  transform = double >>= inc
+  eq transform(5), 11
+
+test "composition >>= est left-associative", ->
+  a = (x) -> x + 1
+  b = (x) -> x * 2
+  c = (x) -> x - 3
+  eq ((a >>= b >>= c)(4)), c(b(a(4)))
+
+test "composition >>= — compiles to function wrapping", ->
+  eqJS """
+    transform = double >>= inc
+  """, """
+    const transform = function(__x) {
+      return inc(double(__x));
+    };
+  """
+
+test "pipe avec composition", ->
+  double = (x) -> x * 2
+  inc    = (x) -> x + 1
+  eq (5 |> double >>= inc), 11
+
+test "chaîne de composition puis pipe", ->
+  double = (x) -> x * 2
+  inc    = (x) -> x + 1
+  negate = (x) -> -x
+  transform = double >>= inc >>= negate
+  eq (5 |> transform), -11
