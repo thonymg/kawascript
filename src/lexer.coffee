@@ -128,6 +128,8 @@ exports.Lexer = class Lexer
     return 0 unless m = regex.exec @chunk
     [input, id, colon] = m
 
+    identSuffixLen = 0
+
     # Preserve length of id for location data
     idLength = id.length
     poppedToken = undefined
@@ -177,6 +179,22 @@ exports.Lexer = class Lexer
         'PROPERTY'
       else
         'IDENTIFIER'
+
+    # Capture ? or ! identifier suffixes only for IDENTIFIER tokens (isEmpty?, reset!)
+    # ? is a suffix only when followed (with optional whitespace) by = or : (not ::)
+    if tag is 'IDENTIFIER'
+      nc = @chunk[id.length]
+      if nc is '?' and @chunk[id.length + 1] not in ['.', '[', '?', '(']
+        rest = @chunk[id.length + 1..]
+        ahead = rest.match /^([ \t]*)([=:])/
+        if ahead and not (ahead[2] is ':' and rest[ahead[1].length + 1] is ':')
+          id = id + '?'
+          identSuffixLen = 1
+          idLength = id.length
+      else if nc is '!'
+        id = id + '!'
+        identSuffixLen = 1
+        idLength = id.length
 
     tokenData = {}
     if tag is 'IDENTIFIER' and (id in JS_KEYWORDS or id in COFFEE_KEYWORDS) and
@@ -257,7 +275,7 @@ exports.Lexer = class Lexer
     if inJSXTag and tag is 'IDENTIFIER' and prev[0] isnt ':'
       @token ',', ',', length: 0, origin: tagToken, generated: yes
 
-    input.length
+    input.length + identSuffixLen
 
   # Matches numbers, including decimals, hex, and exponential notation.
   # Be careful not to interfere with ranges in progress.

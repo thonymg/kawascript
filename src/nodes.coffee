@@ -1162,6 +1162,9 @@ exports.IdentifierLiteral = class IdentifierLiteral extends Literal
   eachName: (iterator) ->
     iterator @
 
+  compileNode: (o) ->
+    [@makeCode @value.replace(/[?!]$/, '')]
+
   astType: ->
     if @jsx
       'JSXIdentifier'
@@ -1170,7 +1173,7 @@ exports.IdentifierLiteral = class IdentifierLiteral extends Literal
 
   astProperties: ->
     return
-      name: @value
+      name: @value.replace(/[?!]$/, '')
       declaration: !!@isDeclaration
 
 exports.PropertyName = class PropertyName extends Literal
