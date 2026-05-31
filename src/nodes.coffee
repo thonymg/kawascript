@@ -6284,6 +6284,21 @@ exports.PipeOp = class PipeOp extends Base
     if right instanceof Call
       @compilePipeIntoCall o, leftFrags, right
     else if right instanceof Code
+      # `a |> (x) -> body for v in src`  →  `(v |> (x) -> body) for v in src`
+      # The `for` was captured as the Code body — restructure into a For comprehension.
+      if right.body instanceof Block and right.body.expressions.length is 1 and
+         right.body.expressions[0] instanceof For
+        forNode   = right.body.expressions[0]
+        innerCode = new Code right.params, forNode.body, right.bound
+        innerCode.locationData = right.locationData
+        loopVar   = forNode.name ? @left
+        newPipe   = new PipeOp loopVar, innerCode
+        newPipe.locationData = @locationData
+        newBlock  = new Block [newPipe]
+        newBlock.locationData = forNode.body.locationData
+        newFor    = new For newBlock, forNode
+        newFor.locationData = forNode.locationData
+        return newFor.compileToFragments o, LEVEL_TOP
       fnFrags = @right.compileToFragments o, LEVEL_PAREN
       [].concat(
         [@makeCode '('],

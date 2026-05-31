@@ -6671,6 +6671,83 @@ The <code>extends</code> keyword now functions identically to <code>goog.inherit
 <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.0/js/bootstrap.min.js" integrity="sha384-uefMccjFJAIv6A+rW+L4AHf99KvxDjWSu1z9VI8SKNVmz4sk7buKt/6v9KI65qnm" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/combine/npm/codemirror@5.37.0/lib/codemirror.js,npm/codemirror@5.37.0/mode/coffeescript/coffeescript.js,npm/codemirror@5.37.0/addon/lint/coffeescript-lint.js,npm/codemirror@5.37.0/mode/javascript/javascript.js"></script>
 
+<!-- KawaScript stdlib — available as globals in the Try playground -->
+<script>
+(function() {
+  // kawa/fn — functional combinators
+  var identity   = function(x) { return x; };
+  var always     = function(x) { return function() { return x; }; };
+  var compose    = function() { var fns = Array.from(arguments); return function(x) { return fns.reduceRight(function(acc, fn) { return fn(acc); }, x); }; };
+  var pipe       = function() { var fns = Array.from(arguments); return function(x) { return fns.reduce(function(acc, fn) { return fn(acc); }, x); }; };
+  var flip       = function(fn) { return function(a, b) { var rest = Array.prototype.slice.call(arguments, 2); return fn.apply(null, [b, a].concat(rest)); }; };
+  var tap        = function(fn) { return function(x) { fn(x); return x; }; };
+  var complement = function(fn) { return function() { return !fn.apply(null, arguments); }; };
+  var once       = function(fn) { var called = false, result; return function() { if (!called) { called = true; result = fn.apply(null, arguments); } return result; }; };
+  var partial    = function(fn) { var args = Array.prototype.slice.call(arguments, 1); return function() { return fn.apply(null, args.concat(Array.from(arguments))); }; };
+  var curry      = function(fn) { var arity = fn.length; var curried = function() { var args = Array.from(arguments); return args.length >= arity ? fn.apply(null, args) : function() { return curried.apply(null, args.concat(Array.from(arguments))); }; }; return curried; };
+  var memoize    = function(fn, keyFn) { keyFn = keyFn || JSON.stringify; var cache = new Map(); return function() { var args = Array.from(arguments); var key = keyFn(args); if (!cache.has(key)) cache.set(key, fn.apply(null, args)); return cache.get(key); }; };
+  var juxt       = function() { var fns = Array.from(arguments); return function() { var args = arguments; return fns.map(function(fn) { return fn.apply(null, args); }); }; };
+  var converge   = function(combining) { var fns = Array.prototype.slice.call(arguments, 1); return function() { var args = arguments; return combining.apply(null, fns.map(function(fn) { return fn.apply(null, args); })); }; };
+
+  // kawa/array — data-last, curried
+  var map        = function(fn, arr) { return arr.map(fn); };
+  var filter     = function(fn, arr) { return arr.filter(fn); };
+  var reduce     = function(fn, init, arr) { return arr.reduce(fn, init); };
+  var compact    = function(arr) { return arr.filter(Boolean); };
+  var zip        = function(arr) { var others = Array.prototype.slice.call(arguments, 1); return arr.map(function(x, i) { return [x].concat(others.map(function(o) { return o[i]; })); }); };
+  var sum        = function(arr, fn) { fn = fn || identity; return arr.reduce(function(a, x) { return a + fn(x); }, 0); };
+  var uniq       = function(arr) { return Array.from(new Set(arr)); };
+  var head       = function(arr) { return arr[0]; };
+  var tail       = function(arr) { return arr.slice(1); };
+  var last       = function(arr) { return arr[arr.length - 1]; };
+  var init       = function(arr) { return arr.slice(0, -1); };
+  var take       = function(n, arr) { return arr.slice(0, n); };
+  var drop       = function(n, arr) { return arr.slice(n); };
+  var flatten    = function(arr) { return arr.flat(Infinity); };
+  var unnest     = function(arr) { return arr.flat(1); };
+  var all        = function(fn, arr) { return arr.every(fn); };
+  var any        = function(fn, arr) { return arr.some(fn); };
+  var none       = function(fn, arr) { return !arr.some(fn); };
+  var count      = function(fn, arr) { return arr.filter(fn).length; };
+  var sortBy     = function(fn, arr) { return arr.slice().sort(function(a, b) { return fn(a) < fn(b) ? -1 : fn(a) > fn(b) ? 1 : 0; }); };
+  var groupBy    = function(arr, fn) { return arr.reduce(function(m, x) { var k = fn(x); if (!m.has(k)) m.set(k, []); m.get(k).push(x); return m; }, new Map()); };
+  var range      = function(from, to) { var r = []; for (var i = from; i < to; i++) r.push(i); return r; };
+  var scan       = function(fn, acc, arr) { var r = [acc]; for (var i = 0; i < arr.length; i++) { acc = fn(acc, arr[i]); r.push(acc); } return r; };
+  var without    = function(vals, arr) { return arr.filter(function(x) { return vals.indexOf(x) < 0; }); };
+  var intersection = function(a, b) { return a.filter(function(x) { return b.indexOf(x) >= 0; }); };
+  var union      = function(a, b) { return Array.from(new Set(a.concat(b))); };
+  var difference = function(a, b) { return a.filter(function(x) { return b.indexOf(x) < 0; }); };
+  var myMap      = map; // alias
+
+  // kawa/string
+  var words      = function(s) { return s.trim().split(/\s+/); };
+  var lines      = function(s) { return s.split(/\r?\n/); };
+  var capitalize = function(s) { return s.charAt(0).toUpperCase() + s.slice(1); };
+  var camelize   = function(s) { return s.replace(/[-_](.)/g, function(_, c) { return c.toUpperCase(); }); };
+
+  // kawa/augment — prototype extensions
+  function def(proto, name, fn) { Object.defineProperty(proto, name, { value: fn, enumerable: false, writable: true, configurable: true }); }
+  def(Array.prototype, 'compact',   function() { return compact(this); });
+  def(Array.prototype, 'map',       Array.prototype.map); // already exists
+  def(Array.prototype, 'uniq',      function() { return uniq(this); });
+  def(Array.prototype, 'sum',       function(fn) { return sum(this, fn); });
+  def(Array.prototype, 'take',      function(n) { return take(n, this); });
+  def(Array.prototype, 'drop',      function(n) { return drop(n, this); });
+  def(Array.prototype, 'flatten',   function() { return flatten(this); });
+  def(Array.prototype, 'groupBy',   function(fn) { return groupBy(this, fn); });
+  def(String.prototype, 'words',    function() { return words(this.toString()); });
+  def(String.prototype, 'camelize', function() { return camelize(this.toString()); });
+
+  // Expose everything as window globals
+  var stdlib = {identity,always,compose,pipe,flip,tap,complement,once,partial,curry,memoize,juxt,converge,
+    map,filter,reduce,compact,zip,sum,uniq,head,tail,last,init,take,drop,flatten,unnest,
+    all,any,none,count,sortBy,groupBy,range,scan,without,intersection,union,difference,myMap,
+    words,lines,capitalize,camelize};
+  for (var k in stdlib) window[k] = stdlib[k];
+  window.kawa = stdlib;
+})();
+</script>
+
 <script nomodule src="./browser-compiler-legacy/coffeescript.js"></script>
 <script nomodule>
 (function(){window.location.origin||(window.location.origin="".concat(window.location.protocol,"//").concat(window.location.hostname)),window.GA_TRACKING_ID="UA-106156830-1",null==window.dataLayer&&(window.dataLayer=[]),window.gtag=function(){window.dataLayer.push(arguments)},window.gtag("js",new Date),window.gtag("config",window.GA_TRACKING_ID),$(document).ready(function(){var clearHash,closeTry,editors,initializeEditor,initializeScrollspyFromHash,initializeTryEditors,lastCompilationElapsedTime,previousHash,replaceState,textareas,toggleSidebar,toggleTry,_Mathround=Math.round;if(CoffeeScript.patchStackTrace(),$("time").each(function(index,el){var date,formattedDate;return date=el.dateTime||$(el).text(),formattedDate=new Date(date).toLocaleDateString(void 0,{year:"numeric",month:"long",day:"numeric"}),$(el).text(formattedDate.toString())}),toggleSidebar=function(){return $(".navbar-toggler, .sidebar").toggleClass("show")},$("[data-toggle=\"offcanvas\"]").click(toggleSidebar),$("[data-action=\"sidebar-nav\"]").click(function(event){return $(".navbar-toggler").is(":visible")&&(event.preventDefault(),toggleSidebar(),setTimeout(function(){return window.location=event.target.href},260)),gtag("event","sidebar_navigate",{event_category:"navigation",event_label:event.target.href.replace(window.location.origin,"")})}),$(".main").scrollspy({target:"#contents",offset:_Mathround($("main").css("padding-top").replace("px",""))}),initializeScrollspyFromHash=function(hash){return $("#contents a.active[href!='".concat(hash,"']")).removeClass("show")},$(".main").on("activate.bs.scrollspy",function(event,target){var $target;if($("#contents a.active[href!='".concat(target.relatedTarget,"']")).removeClass("show"),$target=$("#contents a[href='".concat(target.relatedTarget,"']")),$target.prop("href")!=="".concat(window.location.origin,"/#try"))return replaceState($target.prop("href")),gtag("config",GA_TRACKING_ID,{page_path:$target.prop("href").replace(window.location.origin,"")})}),textareas=[],editors=[],lastCompilationElapsedTime=200,$("textarea").each(function(index){return textareas[index]=this,$(this).data("index",index)}),initializeEditor=function($textarea){var editor,index,mode,pending;if(index=$textarea.data("index"),mode=$textarea.hasClass("javascript-output")?"javascript":"coffeescript",editors[index]=editor=CodeMirror.fromTextArea($textarea[0],{mode:mode,theme:"twilight",indentUnit:2,tabSize:2,lineWrapping:!0,lineNumbers:!1,inputStyle:"contenteditable",readOnly:"coffeescript"!==mode,viewportMargin:2e308}),"coffeescript"===mode)return pending=null,editor.on("change",function(){return clearTimeout(pending),pending=setTimeout(function(){var coffee,exception,js,lastCompilationStartTime,link,output,_Mathmax=Math.max;lastCompilationStartTime=Date.now();try{if(coffee=editor.getValue(),0===index&&$("#try").hasClass("show")){$("#try").hasClass("show")&&(link="try:".concat(encodeURIComponent(coffee)),replaceState("".concat(window.location.href.split("#")[0],"#").concat(link)));try{null!=window.localStorage&&window.localStorage.setItem("tryCoffeeScriptCode",coffee)}catch(error){exception=error}}js=CoffeeScript.compile(coffee,{bare:!0,inlineMap:!0}),output=js.replace(/(\n\/\/# [^\n]*){2}$/,""),lastCompilationElapsedTime=_Mathmax(200,Date.now()-lastCompilationStartTime)}catch(error){exception=error,output="".concat(exception)}return editors[index+1].js=js,editors[index+1].setValue(output),gtag("event","edit_code",{event_category:"engagement",event_label:$textarea.closest("[data-example]").data("example")})},lastCompilationElapsedTime)}),editor.addKeyMap({Tab:function Tab(cm){return cm.somethingSelected()?cm.indentSelection("add"):/^\t/m.test(cm.getValue())?cm.execCommand("insertTab"):cm.execCommand("insertSoftTab")},"Shift-Tab":function ShiftTab(cm){return cm.indentSelection("subtract")},Enter:function Enter(cm){return cm.options.indentWithTabs=/^\t/m.test(cm.getValue()),cm.execCommand("newlineAndIndent")}})},$(".placeholder-code").one("mouseover",function(){var $siblingColumn,$textarea;return $textarea=$(this).prev("textarea"),$(this).remove(),initializeEditor($textarea),$siblingColumn=$($textarea.parent().siblings()[0]),$siblingColumn.children(".placeholder-code").remove(),initializeEditor($($siblingColumn.children("textarea")[0]))}),initializeTryEditors=function(){return initializeEditor($("#try-coffeescript-coffee")),initializeEditor($("#try-coffeescript-js"))},$("[data-action=\"run-code-example\"]").click(function(){var index,js,ref,run;return run=$(this).data("run"),index=$("#".concat($(this).data("example"),"-js")).data("index"),js=(null==(ref=editors[index])?void 0:ref.js)?editors[index].js:$(textareas[index]).val(),!0!==run&&(js="".concat(js,"\nalert(").concat(unescape(run),");")),window.eval(js),gtag("event","run_code",{event_category:"engagement",event_label:$(this).closest("[data-example]").data("example")})}),previousHash=null,toggleTry=function(checkLocalStorage){var coffee,exception;if($("#try, #try-link").toggleClass("show"),!$("#try").hasClass("show"))return previousHash?replaceState(previousHash):clearHash();if(window.location.hash&&(previousHash=window.location.hash),0===$("#try .CodeMirror").length&&initializeTryEditors(),checkLocalStorage&&null!=window.localStorage)try{return coffee=window.localStorage.getItem("tryCoffeeScriptCode"),null==coffee?replaceState("#try"):editors[0].setValue(coffee)}catch(error){return exception=error,replaceState("#try")}else return replaceState("#try")},closeTry=function(){return $("#try, #try-link").removeClass("show"),previousHash?replaceState(previousHash):clearHash()},$("[data-toggle=\"try\"]").click(function(event){return event.preventDefault(),toggleTry(!0)}),$("[data-close=\"try\"]").click(closeTry),$("[data-action=\"scroll-to-top\"]").click(function(){if(!$("#try").hasClass("show"))return $(".main")[0].scrollTop=0,setTimeout(clearHash,10)}),clearHash=function(){return window.history.replaceState({},document.title,window.location.pathname)},replaceState=function(newURL){return 0===(null==newURL?void 0:newURL.indexOf("#"))&&(newURL="".concat(window.location.pathname).concat(newURL)),window.history.replaceState({},document.title,newURL||"")},$(window).on("hashchange",function(){if(""===window.location.hash)return clearHash()}),null!=window.location.hash){if("#try"===window.location.hash)return toggleTry(!0);if(0===window.location.hash.indexOf("#try"))return 0===$("#try .CodeMirror").length&&initializeTryEditors(),editors[0].setValue(decodeURIComponent(window.location.hash.slice(5))),toggleTry(!1);if(""===window.location.hash)return clearHash();if(initializeScrollspyFromHash(window.location.hash),1<window.location.hash.length)return document.getElementById(window.location.hash.slice(1).replace(/try:.*/,"")).scrollIntoView()}})}).call(this);
